@@ -4,7 +4,7 @@ setup(
     name="midipy",
     version="0.1.2",
     author="Your Name",
-    author_email="your.email@example.com",
+    author_email="mdanish3@uwo.ca",
     description="A Python package for MIDI data processing, analysis, and parsing.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
