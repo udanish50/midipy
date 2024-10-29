@@ -11,25 +11,12 @@ import numpy as np
 from .midi_utils import decode_var_length
 
 def midiInfo(midi, outputFormat=1, tracklist=None, verbose=0):
-    """
-    Extract detailed information from a MIDI structure, such as note timings and velocities.
-
-    Parameters:
-    - midi (dict): The parsed MIDI data structure.
-    - outputFormat (int): Output format option (default is 1).
-    - tracklist (list of int, optional): List of track numbers to analyze; defaults to all tracks.
-    - verbose (int): Verbosity level for debugging (default is 0).
-
-    Returns:
-    - tuple: A tuple containing Notes (array), endtime (float or list), and tempo (list).
-    """
     if tracklist is None:
         tracklist = list(range(len(midi['track'])))
 
-    current_tempo = 500000  # Default tempo in microseconds per quarter note
+    current_tempo = 500000  # default tempo
     tempos, tempos_time = getTempoChanges(midi)
 
-    # Default tempo settings if no tempo changes are detected
     if len(tempos) == 0:
         tempos = [current_tempo]
         tempos_time = [0]
@@ -49,21 +36,18 @@ def midiInfo(midi, outputFormat=1, tracklist=None, verbose=0):
             msg_type = currMsg['type']
             chan = currMsg['chan']
 
-            # Update cumulative time and seconds
             cumtime += deltatime
             seconds += deltatime * 1e-6 * current_tempo / midi['ticks_per_quarter_note']
 
-            # Adjust current tempo if necessary
             idx = np.where(cumtime >= np.array(tempos_time))[0]
             if len(idx) > 0:
                 current_tempo = tempos[idx[-1]]
-            elif verbose:
-                print('No tempos_time found?')
+            else:
+                if verbose:
+                    print('No tempos_time found?')
 
-            # Note ON events
             if midimeta == 1 and msg_type == 144 and data[1] > 0:
                 Notes = np.vstack((Notes, [tracknum, chan, data[0], data[1], seconds, 0, msgNum + 1, -1]))
-            # Note OFF events
             elif midimeta == 1 and ((msg_type == 144 and data[1] == 0) or msg_type == 128):
                 ind = np.where((Notes[:, 0] == tracknum) &
                                (Notes[:, 1] == chan) &
@@ -75,26 +59,28 @@ def midiInfo(midi, outputFormat=1, tracklist=None, verbose=0):
                         print(f'Warning: ending non-open note?')
                 else:
                     if len(ind) > 1:
-                        ind = ind[0]  # Take the first match
+                        ind = ind[0]  # take the first match
                     Notes[ind, 5] = seconds
                     Notes[ind, 7] = msgNum + 1
-            # End of Track event
-            elif midimeta == 0 and msg_type == 47:
+            elif midimeta == 0 and msg_type == 47:  # End of Track
                 if not endtime:
                     endtime = seconds
-                elif isinstance(endtime, float):
-                    endtime = [endtime]
-                endtime.append(seconds)
+                else:
+                    if verbose:
+                        print('Two "end of track" messages?')
+                    if isinstance(endtime, float):
+                        endtime = [endtime]  # Convert to list if it was a float
+                    endtime.append(seconds)  # Now append the new end time
 
-        # Set the end time for any unfinished notes
         nleft = np.sum(Notes[:, 7] == -1)
         if nleft > 0:
             Notes[Notes[:, 7] == -1, 5] = seconds
 
-    # Sort Notes by start time (column 5)
+    # sort Notes by start time (column 5)
     Notes = Notes[np.argsort(Notes[:, 4])]
 
     return Notes, endtime, tempo
+
 
 def getTempoChanges(midi):
     """
