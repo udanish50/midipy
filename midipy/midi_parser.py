@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from .midi_reader import readmidi
 from .midi_analysis import midiInfo
+import warnings
 
 # Ignore warnings
 warnings.filterwarnings("ignore")
@@ -222,7 +223,7 @@ def parser(source, metrics='all', output_format='excel', save_path='Output'):
     savg_velocity, sue_velocity, slf_velocity, srf_velocity = np.zeros(num_files), np.zeros(num_files), np.zeros(num_files), np.zeros(num_files)
     avg_asynchrony, ue_asynchrony, lf_asynchrony, rf_asynchrony = np.zeros(num_files), np.zeros(num_files), np.zeros(num_files), np.zeros(num_files)
     savg_asynchrony, sue_asynchrony, slf_asynchrony, srf_asynchrony = np.zeros(num_files), np.zeros(num_files), np.zeros(num_files), np.zeros(num_files)
-    total_counts, ue_counts, lf_counts, rf_counts = np.zeros(num_files + 1), np.zeros(num_files + 1), np.zeros(num_files + 1), np.zeros(num_files + 1)
+    total_counts, ue_counts, lf_counts, rf_counts = np.zeros(num_files), np.zeros(num_files), np.zeros(num_files), np.zeros(num_files)
 
     avg_velocity_list, ue_velocity_list, lf_velocity_list, rf_velocity_list = [], [], [], []
     avg_asynchrony_list, ue_asynchrony_list, lf_asynchrony_list, rf_asynchrony_list = [], [], [], []
@@ -274,7 +275,21 @@ def parser(source, metrics='all', output_format='excel', save_path='Output'):
         lf_asynchrony_list.append(f'{lf_asynchrony[i]:.2f} ({slf_asynchrony[i]:.2f})')
         rf_asynchrony_list.append(f'{rf_asynchrony[i]:.2f} ({srf_asynchrony[i]:.2f})')
 
+    # Ensure that all lists have the same length by appending summary values
     sessions.append('TOTALS')
+    total_counts = np.append(total_counts, np.sum(total_counts))
+    ue_counts = np.append(ue_counts, np.sum(ue_counts))
+    lf_counts = np.append(lf_counts, np.sum(lf_counts))
+    rf_counts = np.append(rf_counts, np.sum(rf_counts))
+    avg_velocity_list.append(f'{np.mean(avg_velocity):.2f} ({np.mean(savg_velocity):.2f})')
+    ue_velocity_list.append(f'{np.mean(ue_velocity):.2f} ({np.mean(sue_velocity):.2f})')
+    lf_velocity_list.append(f'{np.mean(lf_velocity):.2f} ({np.mean(slf_velocity):.2f})')
+    rf_velocity_list.append(f'{np.mean(rf_velocity):.2f} ({np.mean(srf_velocity):.2f})')
+    avg_asynchrony_list.append(f'{np.mean(avg_asynchrony):.2f} ({np.mean(savg_asynchrony):.2f})')
+    ue_asynchrony_list.append(f'{np.mean(ue_asynchrony):.2f} ({np.mean(sue_asynchrony):.2f})')
+    lf_asynchrony_list.append(f'{np.mean(lf_asynchrony):.2f} ({np.mean(slf_asynchrony):.2f})')
+    rf_asynchrony_list.append(f'{np.mean(rf_asynchrony):.2f} ({np.mean(srf_asynchrony):.2f})')
+
     participant_table = pd.DataFrame({
         'Name': sessions,
         'Total_Counts': total_counts,
@@ -291,13 +306,14 @@ def parser(source, metrics='all', output_format='excel', save_path='Output'):
         'RF_Async': rf_asynchrony_list
     })
 
+    # Filter columns if specific metrics are requested
     if metrics != 'all':
         participant_table = participant_table[['Name'] + metrics]
 
+    # Save the output
     if output_format == 'csv':
         participant_table.to_csv(f"{save_path}.csv", index=False)
     else:
         participant_table.to_excel(f"{save_path}.xlsx", index=False)
 
     return participant_table
-
