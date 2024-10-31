@@ -64,7 +64,7 @@ from midipy.midi_parser import parser
 # Define the source directory and parse the MIDI files
 df = parser(
     source="./P1",  # Replace with your directory containing MIDI files
-    metrics=['Name', 'Total_Counts', 'Avg_Velocity'],  # Specify the metrics you want
+    metrics=['Total_Counts', 'Avg_Velocity'],  # Specify the metrics you want
     output_format='excel',  # Choose 'excel' or 'csv' for output format
     save_path='MyMIDIOutput'  # Path and filename for the output (without extension)
 )
