@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="midipy",
-    version="0.1.3",
+    version="0.1.4",
     author="Your Name",
     author_email="mdanish3@uwo.ca",
     description="A Python package for MIDI data processing, analysis, and parsing.",
