@@ -1,19 +1,3 @@
-```python
-# Install midipy (if not already installed)
-# pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ midipy==0.1.4
-
-import midipy
-from midipy.midi_parser import parser
-from midipy.midi_parser import parser_segments
-
-# Example usage of `parser`
-df = parser(source="./P1", metrics=['UE_Counts', 'RF_Async', 'UE_Async'], output_format='csv')
-print(df)
-
-# Example usage of `parser_segments` for segment-wise analysis
-df2 = parser_segments(source="./P1", metrics=['all'], output_format='excel', num_segments=10)
-print(df2)
-```
 
 # Midipy
 
@@ -125,6 +109,24 @@ In this example:
 - **Number of Segments**: Each file is divided into 10 segments, allowing for detailed segment-wise analysis.
 
 ### Output Files
+
+```python
+# Install midipy (if not already installed)
+# pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ midipy==0.1.4
+
+import midipy
+from midipy.midi_parser import parser
+from midipy.midi_parser import parser_segments
+
+# Example usage of `parser`
+df = parser(source="./P1", metrics=['UE_Counts', 'RF_Async', 'UE_Async'], output_format='csv')
+print(df)
+
+# Example usage of `parser_segments` for segment-wise analysis
+df2 = parser_segments(source="./P1", metrics=['all'], output_format='excel', num_segments=10)
+print(df2)
+```
+
 
 - `parser` output: This file will contain the selected metrics for each session (entire MIDI file).
 - `parser_segments` output: This file will include metrics for each segment within each session, offering finer-grained analysis.
