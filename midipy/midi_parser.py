@@ -13,6 +13,7 @@ from .midi_reader import readmidi
 from .midi_analysis import midiInfo
 import warnings
 
+
 # Ignore warnings
 warnings.filterwarnings("ignore")
 
@@ -209,7 +210,7 @@ def parsemidi(source):
     return participant_table
 
 
-def parser(source, metrics='all', output_format='excel', save_path='Output'):
+def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
     if not os.path.isdir(source):
         raise ValueError('The specified directory does not exist.')
 
@@ -307,8 +308,13 @@ def parser(source, metrics='all', output_format='excel', save_path='Output'):
     })
 
     # Filter columns if specific metrics are requested
-    if metrics != 'all':
-        participant_table = participant_table[['Name'] + metrics]
+    if metrics != ['all']:
+        if not isinstance(metrics, list):
+            raise ValueError('Metrics should be a list of column names, e.g., ["Total_Counts"], or ["all"].')
+        try:
+            participant_table = participant_table[['Name'] + metrics]
+        except KeyError as e:
+            raise KeyError(f"Some of the specified metrics {metrics} are not in the DataFrame columns. Available columns: {list(participant_table.columns)}")
 
     # Save the output
     if output_format == 'csv':
