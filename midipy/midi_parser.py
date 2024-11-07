@@ -323,3 +323,78 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
         participant_table.to_excel(f"{save_path}.xlsx", index=False)
 
     return participant_table
+
+
+def parser_segments(source, metrics=['all'], output_format='excel', save_path='SegmentOutput', num_segments=5):
+    if not os.path.isdir(source):
+        raise ValueError('The specified directory does not exist.')
+
+    if num_segments <= 0 or not isinstance(num_segments, int):
+        raise ValueError('Number of segments must be a positive integer.')
+
+    all_files = [f for f in os.listdir(source) if f.endswith('.mid')]
+    num_files = len(all_files)
+    if num_files == 0:
+        raise ValueError('No MIDI files found in the specified directory.')
+
+    segment_data = []
+
+    for i, filename in enumerate(all_files):
+        numbers = re.findall(r'\d+', filename)
+        if len(numbers) < 2:
+            raise ValueError(f'Filename {filename} does not contain enough numeric parts to extract patient and session numbers.')
+
+        patient, session = str(numbers[0]), str(numbers[1])
+        midi = readmidi(os.path.join(source, filename))
+        Notes, _, bpms = midiInfo(midi, 0)
+        bpms = bpms[0]
+
+        Notes[:, 4] *= 1000
+        Notes[:, 5] *= 1000
+
+        # Segment-wise analysis
+        segment_duration = (Notes[:, 5].max() - Notes[:, 4].min()) / num_segments
+        for segment in range(num_segments):
+            segment_start = Notes[:, 4].min() + segment * segment_duration
+            segment_end = segment_start + segment_duration
+            segment_notes = Notes[(Notes[:, 4] >= segment_start) & (Notes[:, 4] < segment_end)]
+            segment_ue = np.isin(segment_notes[:, 2], [38, 40, 43, 51, 53, 59])
+            segment_lf = segment_notes[:, 2] == 44
+            segment_rf = segment_notes[:, 2] == 36
+
+            # Calculate metrics for each segment
+            segment_data.append({
+                'Name': f'Patient {patient} session {session} Segment {segment + 1}',
+                'Total_Counts': len(segment_notes),
+                'UE_Counts': np.sum(segment_ue),
+                'LF_Counts': np.sum(segment_lf),
+                'RF_Counts': np.sum(segment_rf),
+                'Avg_Velocity': np.mean(segment_notes[:, 3]) if len(segment_notes) > 0 else 0,
+                'UE_Velocity': np.mean(segment_notes[segment_ue, 3]) if np.sum(segment_ue) > 0 else 0,
+                'LF_Velocity': np.mean(segment_notes[segment_lf, 3]) if np.sum(segment_lf) > 0 else 0,
+                'RF_Velocity': np.mean(segment_notes[segment_rf, 3]) if np.sum(segment_rf) > 0 else 0,
+                'Avg_Async': np.mean(segment_notes[:, 5] - segment_notes[:, 4]) if len(segment_notes) > 0 else 0,
+                'UE_Async': np.mean(segment_notes[segment_ue, 5] - segment_notes[segment_ue, 4]) if np.sum(segment_ue) > 0 else 0,
+                'LF_Async': np.mean(segment_notes[segment_lf, 5] - segment_notes[segment_lf, 4]) if np.sum(segment_lf) > 0 else 0,
+                'RF_Async': np.mean(segment_notes[segment_rf, 5] - segment_notes[segment_rf, 4]) if np.sum(segment_rf) > 0 else 0,
+            })
+
+    # Create DataFrame for segment-wise metrics
+    segment_df = pd.DataFrame(segment_data)
+
+    # Filter columns if specific metrics are requested
+    if metrics != ['all']:
+        if not isinstance(metrics, list):
+            raise ValueError('Metrics should be a list of column names, e.g., ["Total_Counts"], or ["all"].')
+        try:
+            segment_df = segment_df[['Name'] + metrics]
+        except KeyError as e:
+            raise KeyError(f"Some of the specified metrics {metrics} are not in the DataFrame columns. Available columns: {list(segment_df.columns)}")
+
+    # Save the output
+    if output_format == 'csv':
+        segment_df.to_csv(f"{save_path}.csv", index=False)
+    else:
+        segment_df.to_excel(f"{save_path}.xlsx", index=False)
+
+    return segment_df
