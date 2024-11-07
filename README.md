@@ -1,4 +1,21 @@
-# midipy
+```python
+# Install midipy (if not already installed)
+# pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ midipy==0.1.4
+
+import midipy
+from midipy.midi_parser import parser
+from midipy.midi_parser import parser_segments
+
+# Example usage of `parser`
+df = parser(source="./P1", metrics=['UE_Counts', 'RF_Async', 'UE_Async'], output_format='csv')
+print(df)
+
+# Example usage of `parser_segments` for segment-wise analysis
+df2 = parser_segments(source="./P1", metrics=['all'], output_format='excel', num_segments=10)
+print(df2)
+```
+
+# Midipy
 
 A Python package for MIDI data processing, analysis, and parsing.
 
@@ -11,6 +28,7 @@ Midipy provides tools to read, analyze, and process MIDI files. This package dec
 - **Read MIDI files**: Parse and load MIDI files for analysis.
 - **Analyze MIDI data**: Extract information such as note counts, velocities, and asynchrony.
 - **Batch processing**: Process multiple MIDI files from a specified directory.
+- **Segment-wise Analysis**: Perform analyses on specific segments within each MIDI file.
 
 ## Installation
 
@@ -29,9 +47,15 @@ The main function to use in this package is the `parser` function, which parses 
 ### Parameters for `parser`
 
 - **`source`**: (Required) The directory path containing MIDI files. Ensure that this directory contains only `.mid` files.
-- **`metrics`**: (Optional) Specify `'all'` to include all available metrics or provide a list of specific metrics you want to display.
+- **`metrics`**: (Optional) Specify `['all']` to include all available metrics or provide a list of specific metrics you want to display.
 - **`output_format`**: (Optional) Choose `'excel'` or `'csv'` as the format for saving the output file.
 - **`save_path`**: (Optional) Define the path and filename (without extension) for the output file. The default is `"Output"`.
+
+### Segment-wise Analysis Using `parser_segments`
+
+You can perform segment-wise analysis by using the `parser_segments` function. It divides each MIDI file into a specified number of segments and calculates metrics for each segment.
+
+- **`num_segments`**: (Optional) Number of segments to divide each MIDI file into for analysis. Defaults to 10 if not specified.
 
 ### Available Metrics
 
@@ -73,9 +97,36 @@ df = parser(
 print(df)
 ```
 
+### Segment-wise Analysis Example
+
+The following example demonstrates how to perform segment-wise analysis on MIDI files, dividing each file into 10 segments.
+
+```python
+import midipy
+# Import the parser_segments function from midipy
+from midipy.midi_parser import parser_segments
+
+# Define the source directory and parse the MIDI files segment-wise
+df_segments = parser_segments(
+    source="./P1",  # Directory with MIDI files
+    metrics=['all'],  # Use 'all' for all metrics or specify specific ones
+    output_format='excel',  # Choose output format ('excel' or 'csv')
+    num_segments=10  # Number of segments for analysis
+)
+
+# Display the segment-wise parsed DataFrame
+print(df_segments)
+```
+
 In this example:
 - **Directory**: The directory `./P1` contains the MIDI files to be parsed.
-- **Metrics**: Only the `Name`, `Total_Counts`, and `Avg_Velocity` metrics are selected.
-- **Output Format**: The data will be saved as an Excel file (`MyMIDIOutput.xlsx`).
+- **Metrics**: All available metrics are selected.
+- **Output Format**: The data will be saved as an Excel file.
+- **Number of Segments**: Each file is divided into 10 segments, allowing for detailed segment-wise analysis.
 
-The resulting file will contain only the specified metrics, and the output file will be saved in the specified location with the name `MyMIDIOutput.xlsx`.
+### Output Files
+
+- `parser` output: This file will contain the selected metrics for each session (entire MIDI file).
+- `parser_segments` output: This file will include metrics for each segment within each session, offering finer-grained analysis.
+
+With `midipy`, you can easily analyze MIDI files and extract meaningful musical features, whether for entire sessions or for specific segments within each file.
