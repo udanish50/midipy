@@ -361,6 +361,14 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
     return participant_table
 
 def parser_segments(source, metrics=['all'], output_format='excel', save_path='SegmentOutput', num_segments=5):
+    """
+    Parse multiple MIDI files and compute segment-wise metrics.
+    If filename does not contain at least two numbers, it will
+    fallback to the plain filename as Name.
+
+    You can optionally rescale segment data with the function
+    `scale_segment_data(segment_df)` provided below if desired.
+    """
     if not os.path.isdir(source):
         raise ValueError('The specified directory does not exist.')
 
@@ -375,11 +383,14 @@ def parser_segments(source, metrics=['all'], output_format='excel', save_path='S
     segment_data = []
 
     for i, filename in enumerate(all_files):
+        # Relaxed filename parsing
         numbers = re.findall(r'\d+', filename)
-        if len(numbers) < 2:
-            raise ValueError(f'Filename {filename} does not contain enough numeric parts to extract patient and session numbers.')
+        if len(numbers) >= 2:
+            patient, session = str(numbers[0]), str(numbers[1])
+            name_prefix = f'Patient {patient} session {session}'
+        else:
+            name_prefix = filename  # Fallback
 
-        patient, session = str(numbers[0]), str(numbers[1])
         midi = readmidi(os.path.join(source, filename))
         Notes, _, bpms = midiInfo(midi, 0)
         bpms = bpms[0]
@@ -387,28 +398,42 @@ def parser_segments(source, metrics=['all'], output_format='excel', save_path='S
         Notes[:, 4] *= 1000
         Notes[:, 5] *= 1000
 
+        # Calculate the total duration from first note start to last note end
+        overall_start = Notes[:, 4].min()
+        overall_end = Notes[:, 5].max()
+        total_duration = overall_end - overall_start
+
         # Segment-wise analysis
-        segment_duration = (Notes[:, 5].max() - Notes[:, 4].min()) / num_segments
+        segment_duration = total_duration / num_segments
+
         for segment in range(num_segments):
-            segment_start = Notes[:, 4].min() + segment * segment_duration
+            segment_start = overall_start + segment * segment_duration
             segment_end = segment_start + segment_duration
+
             segment_notes = Notes[(Notes[:, 4] >= segment_start) & (Notes[:, 4] < segment_end)]
             segment_ue = np.isin(segment_notes[:, 2], [38, 40, 43, 51, 53, 59])
             segment_lf = segment_notes[:, 2] == 44
             segment_rf = segment_notes[:, 2] == 36
 
             # Calculate metrics for each segment
+            if len(segment_notes) > 0:
+                avg_vel = np.mean(segment_notes[:, 3])
+                avg_async = np.mean(segment_notes[:, 5] - segment_notes[:, 4])
+            else:
+                avg_vel = 0
+                avg_async = 0
+
             segment_data.append({
-                'Name': f'Patient {patient} session {session} Segment {segment + 1}',
+                'Name': f'{name_prefix} Segment {segment + 1}',
                 'Total_Counts': len(segment_notes),
                 'UE_Counts': np.sum(segment_ue),
                 'LF_Counts': np.sum(segment_lf),
                 'RF_Counts': np.sum(segment_rf),
-                'Avg_Velocity': np.mean(segment_notes[:, 3]) if len(segment_notes) > 0 else 0,
+                'Avg_Velocity': avg_vel,
                 'UE_Velocity': np.mean(segment_notes[segment_ue, 3]) if np.sum(segment_ue) > 0 else 0,
                 'LF_Velocity': np.mean(segment_notes[segment_lf, 3]) if np.sum(segment_lf) > 0 else 0,
                 'RF_Velocity': np.mean(segment_notes[segment_rf, 3]) if np.sum(segment_rf) > 0 else 0,
-                'Avg_Async': np.mean(segment_notes[:, 5] - segment_notes[:, 4]) if len(segment_notes) > 0 else 0,
+                'Avg_Async': avg_async,
                 'UE_Async': np.mean(segment_notes[segment_ue, 5] - segment_notes[segment_ue, 4]) if np.sum(segment_ue) > 0 else 0,
                 'LF_Async': np.mean(segment_notes[segment_lf, 5] - segment_notes[segment_lf, 4]) if np.sum(segment_lf) > 0 else 0,
                 'RF_Async': np.mean(segment_notes[segment_rf, 5] - segment_notes[segment_rf, 4]) if np.sum(segment_rf) > 0 else 0,
@@ -424,7 +449,8 @@ def parser_segments(source, metrics=['all'], output_format='excel', save_path='S
         try:
             segment_df = segment_df[['Name'] + metrics]
         except KeyError as e:
-            raise KeyError(f"Some of the specified metrics {metrics} are not in the DataFrame columns. Available columns: {list(segment_df.columns)}")
+            raise KeyError(f"Some of the specified metrics {metrics} are not in the DataFrame columns. "
+                           f"Available columns: {list(segment_df.columns)}")
 
     # Save the output
     if output_format == 'csv':
