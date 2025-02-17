@@ -360,15 +360,37 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
 
     return participant_table
 
-def parser_segments(source, metrics=['all'], output_format='excel', save_path='SegmentOutput', num_segments=5):
+def parser_segments(
+    source, 
+    metrics=['all'], 
+    output_format='excel', 
+    save_path='SegmentOutput', 
+    num_segments=5,
+    mean_segments=False   # <-- New parameter
+):
     """
     Parse multiple MIDI files and compute segment-wise metrics.
     If filename does not contain at least two numbers, it will
     fallback to the plain filename as Name.
 
-    You can optionally rescale segment data with the function
-    `scale_segment_data(segment_df)` provided below if desired.
+    Parameters
+    ----------
+    source : str
+        Directory path containing the MIDI files.
+    metrics : list, optional
+        Which metrics (columns) to keep in the final output; ['all'] means keep all.
+    output_format : {'excel', 'csv'}, optional
+        Format to save the final output. Defaults to 'excel'.
+    save_path : str, optional
+        The base name for the output file. Defaults to 'SegmentOutput'.
+    num_segments : int, optional
+        Number of segments to divide each file's total duration into.
+    mean_segments : bool, optional
+        If False (default), returns a row for each file's segments (original behavior).
+        If True, returns one row per segment index, averaging all files' metrics.
     """
+
+
     if not os.path.isdir(source):
         raise ValueError('The specified directory does not exist.')
 
@@ -389,33 +411,36 @@ def parser_segments(source, metrics=['all'], output_format='excel', save_path='S
             patient, session = str(numbers[0]), str(numbers[1])
             name_prefix = f'Patient {patient} session {session}'
         else:
-            name_prefix = filename  # Fallback
+            name_prefix = filename  # Fallback if format doesn't match
 
         midi = readmidi(os.path.join(source, filename))
         Notes, _, bpms = midiInfo(midi, 0)
         bpms = bpms[0]
 
+        # Convert times to milliseconds
         Notes[:, 4] *= 1000
         Notes[:, 5] *= 1000
 
-        # Calculate the total duration from first note start to last note end
+        # Calculate the total duration
         overall_start = Notes[:, 4].min()
         overall_end = Notes[:, 5].max()
         total_duration = overall_end - overall_start
 
-        # Segment-wise analysis
+        # Segment size
         segment_duration = total_duration / num_segments
 
-        for segment in range(num_segments):
-            segment_start = overall_start + segment * segment_duration
+        for seg_index in range(num_segments):
+            segment_start = overall_start + seg_index * segment_duration
             segment_end = segment_start + segment_duration
 
-            segment_notes = Notes[(Notes[:, 4] >= segment_start) & (Notes[:, 4] < segment_end)]
-            segment_ue = np.isin(segment_notes[:, 2], [38, 40, 43, 51, 53, 59])
-            segment_lf = segment_notes[:, 2] == 44
-            segment_rf = segment_notes[:, 2] == 36
+            segment_notes = Notes[
+                (Notes[:, 4] >= segment_start) & (Notes[:, 4] < segment_end)
+            ]
 
-            # Calculate metrics for each segment
+            segment_ue = np.isin(segment_notes[:, 2], [38, 40, 43, 51, 53, 59])
+            segment_lf = (segment_notes[:, 2] == 44)
+            segment_rf = (segment_notes[:, 2] == 36)
+
             if len(segment_notes) > 0:
                 avg_vel = np.mean(segment_notes[:, 3])
                 avg_async = np.mean(segment_notes[:, 5] - segment_notes[:, 4])
@@ -424,7 +449,7 @@ def parser_segments(source, metrics=['all'], output_format='excel', save_path='S
                 avg_async = 0
 
             segment_data.append({
-                'Name': f'{name_prefix} Segment {segment + 1}',
+                'Name': f'{name_prefix} Segment {seg_index + 1}',
                 'Total_Counts': len(segment_notes),
                 'UE_Counts': np.sum(segment_ue),
                 'LF_Counts': np.sum(segment_lf),
@@ -434,25 +459,69 @@ def parser_segments(source, metrics=['all'], output_format='excel', save_path='S
                 'LF_Velocity': np.mean(segment_notes[segment_lf, 3]) if np.sum(segment_lf) > 0 else 0,
                 'RF_Velocity': np.mean(segment_notes[segment_rf, 3]) if np.sum(segment_rf) > 0 else 0,
                 'Avg_Async': avg_async,
-                'UE_Async': np.mean(segment_notes[segment_ue, 5] - segment_notes[segment_ue, 4]) if np.sum(segment_ue) > 0 else 0,
-                'LF_Async': np.mean(segment_notes[segment_lf, 5] - segment_notes[segment_lf, 4]) if np.sum(segment_lf) > 0 else 0,
-                'RF_Async': np.mean(segment_notes[segment_rf, 5] - segment_notes[segment_rf, 4]) if np.sum(segment_rf) > 0 else 0,
+                'UE_Async': (np.mean(segment_notes[segment_ue, 5] - segment_notes[segment_ue, 4])
+                             if np.sum(segment_ue) > 0 else 0),
+                'LF_Async': (np.mean(segment_notes[segment_lf, 5] - segment_notes[segment_lf, 4])
+                             if np.sum(segment_lf) > 0 else 0),
+                'RF_Async': (np.mean(segment_notes[segment_rf, 5] - segment_notes[segment_rf, 4])
+                             if np.sum(segment_rf) > 0 else 0),
             })
 
     # Create DataFrame for segment-wise metrics
     segment_df = pd.DataFrame(segment_data)
 
-    # Filter columns if specific metrics are requested
+    # ----------------------------------------------------------
+    # A) If mean_segments=True, average each segment across files
+    # ----------------------------------------------------------
+    if mean_segments:
+        # 1) Extract segment number from Name (assuming "Segment X")
+        seg_num_series = segment_df['Name'].str.extract(r'Segment\s+(\d+)')[0]
+        seg_num_series = seg_num_series.astype(int, errors='ignore')
+        
+        # 2) In case "Segment_Number" already exists, drop it to avoid the pandas error
+        if 'Segment_Number' in segment_df.columns:
+            segment_df.drop(columns=['Segment_Number'], inplace=True)
+
+        segment_df['Segment_Number'] = seg_num_series
+
+        # 4) Identify numeric columns (e.g., velocities, counts)
+        numeric_cols = segment_df.select_dtypes(include=[np.number]).columns
+
+        # 5) Group by Segment_Number and compute the mean of numeric columns
+        #    Using as_index=False so we don't run into duplicate column issues
+        df_agg = segment_df.groupby('Segment_Number', as_index=False)[numeric_cols].mean()
+
+        # 6) Rebuild a Name that says "Segment X" for the aggregated row
+        df_agg['Name'] = 'Segment ' + df_agg['Segment_Number'].astype(str)
+        
+        # 7) Move 'Name' to the front if desired (minimal changes though)
+        #    We'll just place it left-most, then keep the rest as is
+        col_order = ['Name', 'Segment_Number'] + [col for col in df_agg.columns 
+                                                  if col not in ['Name', 'Segment_Number']]
+        df_agg = df_agg[col_order]
+
+        # 8) Overwrite the main DataFrame with the aggregated data
+        segment_df = df_agg
+
+    # ------------------------------------------------------------
+    # B) Filter columns if specific metrics are requested
+    # ------------------------------------------------------------
     if metrics != ['all']:
         if not isinstance(metrics, list):
             raise ValueError('Metrics should be a list of column names, e.g., ["Total_Counts"], or ["all"].')
         try:
-            segment_df = segment_df[['Name'] + metrics]
+            # Always include 'Name' in the final output
+            keep_cols = ['Name'] + metrics
+            segment_df = segment_df[keep_cols]
         except KeyError as e:
-            raise KeyError(f"Some of the specified metrics {metrics} are not in the DataFrame columns. "
-                           f"Available columns: {list(segment_df.columns)}")
+            raise KeyError(
+                f"Some of the specified metrics {metrics} are not in the DataFrame columns. "
+                f"Available columns: {list(segment_df.columns)}"
+            )
 
-    # Save the output
+    # ------------------------------------------------------------
+    # C) Save the output
+    # ------------------------------------------------------------
     if output_format == 'csv':
         segment_df.to_csv(f"{save_path}.csv", index=False)
     else:
