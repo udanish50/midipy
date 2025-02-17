@@ -91,11 +91,13 @@ import midipy
 from midipy.midi_parser import parser_segments
 
 # Define the source directory and parse the MIDI files segment-wise
-df_segments = parser_segments(
-    source="./P1",  # Directory with MIDI files
-    metrics=['all'],  # Use 'all' for all metrics or specify specific ones
-    output_format='excel',  # Choose output format ('excel' or 'csv')
-    num_segments=10  # Number of segments for analysis
+def parser_segments(
+    source, 
+    metrics=['all'], 
+    output_format='excel', 
+    save_path='SegmentOutput', 
+    num_segments=5,
+    mean_segments=False   # <-- If you want averaged over segments 
 )
 
 # Display the segment-wise parsed DataFrame
