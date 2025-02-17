@@ -20,7 +20,8 @@ warnings.filterwarnings("ignore")
 def parsemidi(source):
     """
     Parse multiple MIDI files in a specified directory and extract relevant note and timing information.
-
+    If filename does not contain at least two numbers, it will simply use the filename as the "Name" field.
+    
     Parameters:
     - source (str): Directory path containing the MIDI files.
 
@@ -83,21 +84,22 @@ def parsemidi(source):
     rf_asynchrony_list = []
     
     for i, filename in enumerate(all_files):
-        # Parse patient and session numbers from filename
+        # Attempt to parse patient and session numbers from filename
         numbers = re.findall(r'\d+', filename)
-        if len(numbers) < 2:
-            raise ValueError(f'Filename {filename} does not contain enough numeric parts to extract patient and session numbers.')
-        
-        patient = str(numbers[0])
-        session = str(numbers[1])
-        sessions.append(f'Patient {patient} session {session}')
-        
+        if len(numbers) >= 2:
+            patient = str(numbers[0])
+            session = str(numbers[1])
+            sessions.append(f'Patient {patient} session {session}')
+        else:
+            # Fallback: just use the raw filename as the name
+            sessions.append(filename)
+
         # Load MIDI file and extract information
         midi = readmidi(os.path.join(source, filename))
         Notes, _, bpms = midiInfo(midi, 0)
         bpms = bpms[0]
         
-        # Convert seconds to ticks
+        # Convert seconds to milliseconds (as in your original code)
         Notes[:, 4] *= 1000
         Notes[:, 5] *= 1000
 
@@ -211,6 +213,9 @@ def parsemidi(source):
 
 
 def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
+    """
+    Similar parser function but does not throw error if filename format is not standard.
+    """
     if not os.path.isdir(source):
         raise ValueError('The specified directory does not exist.')
 
@@ -230,30 +235,51 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
     avg_asynchrony_list, ue_asynchrony_list, lf_asynchrony_list, rf_asynchrony_list = [], [], [], []
 
     for i, filename in enumerate(all_files):
+        # Relaxed filename parsing
         numbers = re.findall(r'\d+', filename)
-        if len(numbers) < 2:
-            raise ValueError(f'Filename {filename} does not contain enough numeric parts to extract patient and session numbers.')
+        if len(numbers) >= 2:
+            patient, session = str(numbers[0]), str(numbers[1])
+            sessions.append(f'Patient {patient} session {session}')
+        else:
+            # Fallback
+            sessions.append(filename)
 
-        patient, session = str(numbers[0]), str(numbers[1])
-        sessions.append(f'Patient {patient} session {session}')
         midi = readmidi(os.path.join(source, filename))
         Notes, _, bpms = midiInfo(midi, 0)
         bpms = bpms[0]
 
+        # Convert to ms
         Notes[:, 4] *= 1000
         Notes[:, 5] *= 1000
 
         ue = np.isin(Notes[:, 2], [38, 40, 43, 51, 53, 59])
-        lf, rf = Notes[:, 2] == 44, Notes[:, 2] == 36
+        lf = Notes[:, 2] == 44
+        rf = Notes[:, 2] == 36
 
-        total_counts[i], ue_counts[i], lf_counts[i], rf_counts[i] = Notes.shape[0], np.sum(ue), np.sum(lf), np.sum(rf)
-        avg_velocity[i], ue_velocity[i], lf_velocity[i], rf_velocity[i] = np.mean(Notes[:, 3]), np.mean(Notes[ue, 3]), np.mean(Notes[lf, 3]), np.mean(Notes[rf, 3])
-        savg_velocity[i], sue_velocity[i], slf_velocity[i], srf_velocity[i] = np.std(Notes[:, 3]), np.std(Notes[ue, 3]), np.std(Notes[lf, 3]), np.std(Notes[rf, 3])
+        total_counts[i], ue_counts[i], lf_counts[i], rf_counts[i] = (
+            Notes.shape[0],
+            np.sum(ue),
+            np.sum(lf),
+            np.sum(rf)
+        )
+        avg_velocity[i], ue_velocity[i], lf_velocity[i], rf_velocity[i] = (
+            np.mean(Notes[:, 3]),
+            np.mean(Notes[ue, 3]),
+            np.mean(Notes[lf, 3]),
+            np.mean(Notes[rf, 3])
+        )
+        savg_velocity[i], sue_velocity[i], slf_velocity[i], srf_velocity[i] = (
+            np.std(Notes[:, 3]),
+            np.std(Notes[ue, 3]),
+            np.std(Notes[lf, 3]),
+            np.std(Notes[rf, 3])
+        )
 
         min_ioi, threshold = bpms / 4, bpms / 8
         ue_as, lf_as, rf_as = [], [], []
         for j in range(int(total_counts[i])):
-            nn, t1, intquantize = Notes[j, 2], Notes[j, 4], bpms * round(Notes[j, 4] / bpms)
+            nn, t1 = Notes[j, 2], Notes[j, 4]
+            intquantize = bpms * round(t1 / bpms)
             asynchrony = t1 - intquantize
             if abs(asynchrony) <= threshold:
                 if nn in [38, 40, 43, 51, 53, 59]:
@@ -263,9 +289,18 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
                 elif nn == 36:
                     rf_as.append(asynchrony)
 
-        ue_asynchrony[i], lf_asynchrony[i], rf_asynchrony[i] = np.mean(ue_as), np.mean(lf_as), np.mean(rf_as)
-        avg_asynchrony[i] = np.mean(ue_as + lf_as + rf_as)
-        savg_asynchrony[i], sue_asynchrony[i], slf_asynchrony[i], srf_asynchrony[i] = np.std(ue_as + lf_as + rf_as), np.std(ue_as), np.std(lf_as), np.std(rf_as)
+        ue_asynchrony[i], lf_asynchrony[i], rf_asynchrony[i] = (
+            np.mean(ue_as) if len(ue_as) > 0 else 0,
+            np.mean(lf_as) if len(lf_as) > 0 else 0,
+            np.mean(rf_as) if len(rf_as) > 0 else 0
+        )
+        avg_asynchrony[i] = np.mean(ue_as + lf_as + rf_as) if (len(ue_as) + len(lf_as) + len(rf_as)) > 0 else 0
+        savg_asynchrony[i], sue_asynchrony[i], slf_asynchrony[i], srf_asynchrony[i] = (
+            np.std(ue_as + lf_as + rf_as),
+            np.std(ue_as),
+            np.std(lf_as),
+            np.std(rf_as)
+        )
 
         avg_velocity_list.append(f'{avg_velocity[i]:.2f} ({savg_velocity[i]:.2f})')
         ue_velocity_list.append(f'{ue_velocity[i]:.2f} ({sue_velocity[i]:.2f})')
@@ -276,7 +311,7 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
         lf_asynchrony_list.append(f'{lf_asynchrony[i]:.2f} ({slf_asynchrony[i]:.2f})')
         rf_asynchrony_list.append(f'{rf_asynchrony[i]:.2f} ({srf_asynchrony[i]:.2f})')
 
-    # Ensure that all lists have the same length by appending summary values
+    # Append TOTALS row
     sessions.append('TOTALS')
     total_counts = np.append(total_counts, np.sum(total_counts))
     ue_counts = np.append(ue_counts, np.sum(ue_counts))
@@ -314,7 +349,8 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
         try:
             participant_table = participant_table[['Name'] + metrics]
         except KeyError as e:
-            raise KeyError(f"Some of the specified metrics {metrics} are not in the DataFrame columns. Available columns: {list(participant_table.columns)}")
+            raise KeyError(f"Some of the specified metrics {metrics} are not in the DataFrame columns. "
+                           f"Available columns: {list(participant_table.columns)}")
 
     # Save the output
     if output_format == 'csv':
@@ -323,7 +359,6 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
         participant_table.to_excel(f"{save_path}.xlsx", index=False)
 
     return participant_table
-
 
 def parser_segments(source, metrics=['all'], output_format='excel', save_path='SegmentOutput', num_segments=5):
     if not os.path.isdir(source):
