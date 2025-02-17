@@ -14,7 +14,6 @@ setup(
         "numpy",
         "pandas",
         "openpyxl",  # Required for saving to Excel
-        "mido"  # If you're working with MIDI files, ensure `mido` is included
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
