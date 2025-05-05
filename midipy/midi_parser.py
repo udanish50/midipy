@@ -441,12 +441,43 @@ def parser_segments(
             segment_lf = (segment_notes[:, 2] == 44)
             segment_rf = (segment_notes[:, 2] == 36)
 
+           # if len(segment_notes) > 0:
+           #     avg_vel = np.mean(segment_notes[:, 3])
+           #     avg_async = np.mean(segment_notes[:, 5] - segment_notes[:, 4])
+           # else:
+           #     avg_vel = 0
+           #     avg_async = 0
+
+           # Compute average velocity
             if len(segment_notes) > 0:
                 avg_vel = np.mean(segment_notes[:, 3])
-                avg_async = np.mean(segment_notes[:, 5] - segment_notes[:, 4])
             else:
                 avg_vel = 0
-                avg_async = 0
+
+            # Compute asynchronies just as in parsemidi()
+            min_ioi   = bpms / 4
+            threshold = min_ioi / 2
+
+            async_values   = []
+            ue_async_vals  = []
+            lf_async_vals  = []
+            rf_async_vals  = []
+
+            for note in segment_notes:
+                nn = note[2]
+                t1 = note[4]
+                intquantize = bpms * round(t1 / bpms)
+                asynchrony   = t1 - intquantize
+                if abs(asynchrony) <= threshold:
+                    async_values.append(asynchrony)
+                    if   nn in [38,40,43,51,53,59]: ue_async_vals.append(asynchrony)
+                    elif nn == 44:                  lf_async_vals.append(asynchrony)
+                    elif nn == 36:                  rf_async_vals.append(asynchrony)
+
+            avg_async      = np.mean(async_values)  if async_values  else 0
+            ue_async_mean  = np.mean(ue_async_vals) if ue_async_vals  else 0
+            lf_async_mean  = np.mean(lf_async_vals) if lf_async_vals  else 0
+            rf_async_mean  = np.mean(rf_async_vals) if rf_async_vals  else 0
 
             segment_data.append({
                 'Name': f'{name_prefix} Segment {seg_index + 1}',
@@ -458,13 +489,17 @@ def parser_segments(
                 'UE_Velocity': np.mean(segment_notes[segment_ue, 3]) if np.sum(segment_ue) > 0 else 0,
                 'LF_Velocity': np.mean(segment_notes[segment_lf, 3]) if np.sum(segment_lf) > 0 else 0,
                 'RF_Velocity': np.mean(segment_notes[segment_rf, 3]) if np.sum(segment_rf) > 0 else 0,
+                #'Avg_Async': avg_async,
+                #'UE_Async': (np.mean(segment_notes[segment_ue, 5] - segment_notes[segment_ue, 4])
+                #             if np.sum(segment_ue) > 0 else 0),
+                #'LF_Async': (np.mean(segment_notes[segment_lf, 5] - segment_notes[segment_lf, 4])
+                #             if np.sum(segment_lf) > 0 else 0),
+                #'RF_Async': (np.mean(segment_notes[segment_rf, 5] - segment_notes[segment_rf, 4])
+                #             if np.sum(segment_rf) > 0 else 0),
                 'Avg_Async': avg_async,
-                'UE_Async': (np.mean(segment_notes[segment_ue, 5] - segment_notes[segment_ue, 4])
-                             if np.sum(segment_ue) > 0 else 0),
-                'LF_Async': (np.mean(segment_notes[segment_lf, 5] - segment_notes[segment_lf, 4])
-                             if np.sum(segment_lf) > 0 else 0),
-                'RF_Async': (np.mean(segment_notes[segment_rf, 5] - segment_notes[segment_rf, 4])
-                             if np.sum(segment_rf) > 0 else 0),
+                'UE_Async': ue_async_mean,
+                'LF_Async': lf_async_mean,
+                'RF_Async': rf_async_mean,
             })
 
     # Create DataFrame for segment-wise metrics
