@@ -17,7 +17,8 @@ import warnings
 # Ignore warnings
 warnings.filterwarnings("ignore")
 
-def parsemidi(source):
+# def parsemidi(source):
+def parsemidi(source, ue_keys=None, lf_key=None, rf_key=None):
     """
     Parse multiple MIDI files in a specified directory and extract relevant note and timing information.
     If filename does not contain at least two numbers, it will simply use the filename as the "Name" field.
@@ -28,6 +29,14 @@ def parsemidi(source):
     Returns:
     - pd.DataFrame: A DataFrame containing parsed data for each MIDI file.
     """
+    # --- allow user to override the default extremity keys ---
+    if ue_keys is None:
+        ue_keys = [38, 40, 43, 51, 53, 59]
+    if lf_key is None:
+        lf_key = 44
+    if rf_key is None:
+        rf_key = 36
+        
     # Check if the source directory exists
     if not os.path.isdir(source):
         raise ValueError('The specified directory does not exist.')
@@ -104,9 +113,14 @@ def parsemidi(source):
         Notes[:, 5] *= 1000
 
         # Extremity Separation
-        ue = np.isin(Notes[:, 2], [38, 40, 43, 51, 53, 59])
-        lf = Notes[:, 2] == 44
-        rf = Notes[:, 2] == 36
+       # ue = np.isin(Notes[:, 2], [38, 40, 43, 51, 53, 59])
+       # lf = Notes[:, 2] == 44
+       # rf = Notes[:, 2] == 36
+
+        ue = np.isin(Notes[:, 2], ue_keys)
+        lf = Notes[:, 2] == lf_key
+        rf = Notes[:, 2] == rf_key
+
 
         # Note counts
         total_counts[i] = Notes.shape[0]
@@ -139,12 +153,20 @@ def parsemidi(source):
             intquantize = bpms * round(t1 / bpms)
             asynchrony = t1 - intquantize
             if abs(asynchrony) <= threshold:
-                if nn in [38, 40, 43, 51, 53, 59]:
+                if nn in ue_keys:
                     ue_as.append(asynchrony)
-                elif nn == 44:
+                elif nn == lf_key:
                     lf_as.append(asynchrony)
-                elif nn == 36:
+                elif nn == rf_key:
                     rf_as.append(asynchrony)
+                #if nn in [38, 40, 43, 51, 53, 59]:
+                #    ue_as.append(asynchrony)
+                #elif nn == 44:
+                #    lf_as.append(asynchrony)
+                #elif nn == 36:
+                #    rf_as.append(asynchrony)
+                
+          
         
         # Means and cumulative values
         means = [np.mean(ue_as), np.mean(lf_as), np.mean(rf_as)]
@@ -212,10 +234,24 @@ def parsemidi(source):
     return participant_table
 
 
-def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
+#def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
+def parser(source,
+           metrics=['all'],
+           output_format='excel',
+           save_path='Output',
+           ue_keys=None,
+           lf_key=None,
+           rf_key=None):
     """
     Similar parser function but does not throw error if filename format is not standard.
     """
+    if ue_keys is None:
+        ue_keys = [38, 40, 43, 51, 53, 59]
+    if lf_key is None:
+        lf_key = 44
+    if rf_key is None:
+        rf_key = 36
+        
     if not os.path.isdir(source):
         raise ValueError('The specified directory does not exist.')
 
@@ -252,9 +288,13 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
         Notes[:, 4] *= 1000
         Notes[:, 5] *= 1000
 
-        ue = np.isin(Notes[:, 2], [38, 40, 43, 51, 53, 59])
-        lf = Notes[:, 2] == 44
-        rf = Notes[:, 2] == 36
+        #ue = np.isin(Notes[:, 2], [38, 40, 43, 51, 53, 59])
+        #lf = Notes[:, 2] == 44
+        #rf = Notes[:, 2] == 36
+        
+        ue = np.isin(Notes[:, 2], ue_keys)
+        lf = Notes[:, 2] == lf_key
+        rf = Notes[:, 2] == rf_key
 
         total_counts[i], ue_counts[i], lf_counts[i], rf_counts[i] = (
             Notes.shape[0],
@@ -282,12 +322,19 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
             intquantize = bpms * round(t1 / bpms)
             asynchrony = t1 - intquantize
             if abs(asynchrony) <= threshold:
-                if nn in [38, 40, 43, 51, 53, 59]:
+                if nn in ue_keys:
                     ue_as.append(asynchrony)
-                elif nn == 44:
+                elif nn == lf_key:
                     lf_as.append(asynchrony)
-                elif nn == 36:
+                elif nn == rf_key:
                     rf_as.append(asynchrony)
+
+                #if nn in [38, 40, 43, 51, 53, 59]:
+                #    ue_as.append(asynchrony)
+                #elif nn == 44:
+                #    lf_as.append(asynchrony)
+                #elif nn == 36:
+                #    rf_as.append(asynchrony)
 
         ue_asynchrony[i], lf_asynchrony[i], rf_asynchrony[i] = (
             np.mean(ue_as) if len(ue_as) > 0 else 0,
@@ -360,14 +407,27 @@ def parser(source, metrics=['all'], output_format='excel', save_path='Output'):
 
     return participant_table
 
+#def parser_segments(
+#    source, 
+#    metrics=['all'], 
+#    output_format='excel', 
+#    save_path='SegmentOutput', 
+#    num_segments=5,
+#    mean_segments=False   # <-- New parameter
+#):
+
 def parser_segments(
-    source, 
-    metrics=['all'], 
-    output_format='excel', 
-    save_path='SegmentOutput', 
+    source,
+    metrics=['all'],
+    output_format='excel',
+    save_path='SegmentOutput',
     num_segments=5,
-    mean_segments=False   # <-- New parameter
+    mean_segments=False,
+    ue_keys=None,
+    lf_key=None,
+    rf_key=None
 ):
+
     """
     Parse multiple MIDI files and compute segment-wise metrics.
     If filename does not contain at least two numbers, it will
@@ -390,6 +450,12 @@ def parser_segments(
         If True, returns one row per segment index, averaging all files' metrics.
     """
 
+    if ue_keys is None:
+        ue_keys = [38, 40, 43, 51, 53, 59]
+    if lf_key is None:
+        lf_key = 44
+    if rf_key is None:
+        rf_key = 36
 
     if not os.path.isdir(source):
         raise ValueError('The specified directory does not exist.')
@@ -437,9 +503,14 @@ def parser_segments(
                 (Notes[:, 4] >= segment_start) & (Notes[:, 4] < segment_end)
             ]
 
-            segment_ue = np.isin(segment_notes[:, 2], [38, 40, 43, 51, 53, 59])
-            segment_lf = (segment_notes[:, 2] == 44)
-            segment_rf = (segment_notes[:, 2] == 36)
+            #segment_ue = np.isin(segment_notes[:, 2], [38, 40, 43, 51, 53, 59])
+            #segment_lf = (segment_notes[:, 2] == 44)
+            #segment_rf = (segment_notes[:, 2] == 36)
+
+            segment_ue = np.isin(segment_notes[:, 2], ue_keys)
+            segment_lf = (segment_notes[:, 2] == lf_key)
+            segment_rf = (segment_notes[:, 2] == rf_key)
+
 
            # if len(segment_notes) > 0:
            #     avg_vel = np.mean(segment_notes[:, 3])
@@ -470,9 +541,16 @@ def parser_segments(
                 asynchrony   = t1 - intquantize
                 if abs(asynchrony) <= threshold:
                     async_values.append(asynchrony)
-                    if   nn in [38,40,43,51,53,59]: ue_async_vals.append(asynchrony)
-                    elif nn == 44:                  lf_async_vals.append(asynchrony)
-                    elif nn == 36:                  rf_async_vals.append(asynchrony)
+                    #if   nn in [38,40,43,51,53,59]: ue_async_vals.append(asynchrony)
+                    #elif nn == 44:                  lf_async_vals.append(asynchrony)
+                    #elif nn == 36:                  rf_async_vals.append(asynchrony)
+                    if nn in ue_keys:
+                        ue_async_vals.append(asynchrony)
+                    elif nn == lf_key:
+                        lf_async_vals.append(asynchrony)
+                    elif nn == rf_key:
+                        rf_async_vals.append(asynchrony)
+
 
             avg_async      = np.mean(async_values)  if async_values  else 0
             ue_async_mean  = np.mean(ue_async_vals) if ue_async_vals  else 0
