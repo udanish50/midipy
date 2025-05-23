@@ -2,13 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="midipy",
-    version="0.1.5",
-    author="Muhammad Umair Danish",  # Replace with your actual name
+    version="0.1.6",  # bumped from 0.1.5
+    author="Muhammad Umair Danish",
     author_email="mdanish3@uwo.ca",
     description="A Python package for MIDI data processing, analysis, and parsing.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/udanish50/midipy",  # GitHub repo link
+    url="https://github.com/udanish50/midipy",
     packages=find_packages(include=["midipy", "midipy.*"]),
     install_requires=[
         "numpy",
