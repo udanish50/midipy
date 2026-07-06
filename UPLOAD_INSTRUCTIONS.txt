@@ -1,0 +1,23 @@
+UPLOAD BOTH FILES TO THE ROOT OF:
+https://github.com/udanish50/midipy
+
+They must be placed at the same level as setup.py and README.md:
+
+midipy/
+├── .github/
+├── midipy/
+├── streamlit_app.py      <-- upload here
+├── requirements.txt      <-- upload here
+├── setup.py
+├── README.md
+├── LICENSE
+└── .gitignore
+
+Do not place streamlit_app.py inside the inner midipy/ package folder.
+
+STREAMLIT DEPLOYMENT VALUES:
+Repository: udanish50/midipy
+Branch: main
+Main file path: streamlit_app.py
+Suggested App URL: midipy-dashboard
+Suggested Python version: 3.11
