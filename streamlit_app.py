@@ -19,10 +19,6 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 
-# =============================================================================
-# APP CONFIGURATION
-# =============================================================================
-
 st.set_page_config(
     page_title="MidiPy Analysis Studio",
     page_icon="🎵",
@@ -59,8 +55,15 @@ METRIC_GROUPS = {
 
 AVAILABLE_METRICS = [
     metric
-    for metrics in METRIC_GROUPS.values()
-    for metric in metrics
+    for group_metrics in METRIC_GROUPS.values()
+    for metric in group_metrics
+]
+
+COUNT_METRICS = [
+    "Total_Counts",
+    "UE_Counts",
+    "LF_Counts",
+    "RF_Counts",
 ]
 
 METRIC_LABELS = {
@@ -82,10 +85,10 @@ METRIC_LABELS = {
 
 METRIC_HELP = {
     "Total_Counts": "Total number of MIDI notes detected.",
-    "UE_Counts": "Notes whose MIDI values match the upper-extremity mapping.",
-    "LF_Counts": "Notes whose MIDI value matches the left-foot mapping.",
-    "RF_Counts": "Notes whose MIDI value matches the right-foot mapping.",
-    "Avg_Velocity": "Mean note velocity with standard deviation in parentheses.",
+    "UE_Counts": "Notes matching the upper-extremity mapping.",
+    "LF_Counts": "Notes matching the left-foot mapping.",
+    "RF_Counts": "Notes matching the right-foot mapping.",
+    "Avg_Velocity": "Mean note velocity with standard deviation.",
     "UE_Velocity": "Upper-extremity mean velocity with standard deviation.",
     "LF_Velocity": "Left-foot mean velocity with standard deviation.",
     "RF_Velocity": "Right-foot mean velocity with standard deviation.",
@@ -95,16 +98,12 @@ METRIC_HELP = {
     "RF_Async": "Right-foot timing asynchrony.",
 }
 
-COUNT_METRICS = [
-    "Total_Counts",
-    "UE_Counts",
-    "LF_Counts",
-    "RF_Counts",
-]
+METRIC_CATEGORY = {
+    metric: group
+    for group, metrics in METRIC_GROUPS.items()
+    for metric in metrics
+}
 
-
-# A new cycle creates fresh widget keys so "Start new analysis" truly resets
-# uploaded files, mappings, analysis choices, and displayed results.
 if "analysis_cycle" not in st.session_state:
     st.session_state["analysis_cycle"] = 0
 
@@ -112,317 +111,364 @@ analysis_cycle = int(st.session_state["analysis_cycle"])
 
 
 # =============================================================================
-# VISUAL SYSTEM
+# LIGHT, ACCESSIBLE VISUAL SYSTEM
 # =============================================================================
 
 st.markdown(
     """
     <style>
     :root {
-        --mp-primary: #3659e3;
-        --mp-primary-dark: #253da8;
-        --mp-accent: #11a8a0;
-        --mp-success: #16794b;
-        --mp-warning: #9a5b00;
-        --mp-danger: #b42318;
-        --mp-surface-soft: color-mix(in srgb, var(--secondary-background-color) 72%, transparent);
-        --mp-border: color-mix(in srgb, var(--text-color) 16%, transparent);
-        --mp-shadow: 0 12px 32px rgba(20, 34, 74, 0.08);
-        --mp-radius: 18px;
+        --mp-blue: #3157d5;
+        --mp-blue-dark: #2443aa;
+        --mp-blue-soft: #eef3ff;
+        --mp-green: #16744a;
+        --mp-green-soft: #edf8f2;
+        --mp-amber: #875500;
+        --mp-amber-soft: #fff7e6;
+        --mp-red: #b42318;
+        --mp-ink: #172033;
+        --mp-muted: #59667c;
+        --mp-border: #dfe5ef;
+        --mp-page: #f6f8fc;
+        --mp-white: #ffffff;
+        --mp-shadow: 0 8px 24px rgba(32, 48, 88, 0.065);
     }
 
     html {
         scroll-behavior: smooth;
+        color-scheme: light !important;
     }
 
-    .stApp {
-        background:
-            radial-gradient(circle at 88% 2%, rgba(54, 89, 227, 0.10), transparent 25rem),
-            radial-gradient(circle at 8% 28%, rgba(17, 168, 160, 0.08), transparent 24rem),
-            var(--background-color);
+    body,
+    .stApp,
+    [data-testid="stAppViewContainer"] {
+        background: var(--mp-page) !important;
+        color: var(--mp-ink) !important;
     }
 
     [data-testid="stHeader"] {
-        background: transparent;
+        background: rgba(246, 248, 252, 0.94) !important;
+        border-bottom: 1px solid var(--mp-border);
+        backdrop-filter: blur(12px);
     }
 
-    [data-testid="stToolbar"] {
-        right: 1rem;
+    [data-testid="stSidebar"],
+    [data-testid="collapsedControl"] {
+        display: none !important;
     }
 
     .block-container {
-        max-width: 1240px;
-        padding-top: 2.4rem;
-        padding-bottom: 4rem;
-    }
-
-    [data-testid="stSidebar"] {
-        border-right: 1px solid var(--mp-border);
+        max-width: 1180px;
+        padding-top: 1.25rem;
+        padding-bottom: 6.5rem;
     }
 
     h1, h2, h3 {
+        color: var(--mp-ink);
         letter-spacing: -0.025em;
     }
 
-    h1 {
+    p, li, label {
+        line-height: 1.5;
+    }
+
+    .mp-brand {
+        margin: 0;
+        font-size: clamp(1.7rem, 4vw, 2.35rem);
         line-height: 1.08;
     }
 
-    p, li, label {
-        line-height: 1.55;
-    }
-
-    .mp-hero {
-        position: relative;
-        overflow: hidden;
-        padding: 2rem 2.1rem;
-        margin-bottom: 1.2rem;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 24px;
-        background:
-            linear-gradient(125deg, rgba(25, 42, 102, 0.98), rgba(54, 89, 227, 0.93) 58%, rgba(17, 168, 160, 0.88));
-        box-shadow: 0 18px 50px rgba(31, 54, 140, 0.24);
-        color: white;
-    }
-
-    .mp-hero::after {
-        content: "";
-        position: absolute;
-        width: 19rem;
-        height: 19rem;
-        right: -7rem;
-        top: -8rem;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.10);
-    }
-
-    .mp-eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        padding: 0.34rem 0.7rem;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.15);
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-
-    .mp-hero h1 {
-        margin: 0.85rem 0 0.45rem;
-        color: white;
-        font-size: clamp(2rem, 5vw, 3.25rem);
-    }
-
-    .mp-hero p {
-        max-width: 48rem;
-        margin: 0;
-        color: rgba(255, 255, 255, 0.88);
-        font-size: 1.03rem;
+    .mp-subtitle {
+        margin: 0.35rem 0 0;
+        color: var(--mp-muted);
+        font-size: 0.98rem;
     }
 
     .mp-stepper {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 0.65rem;
-        margin: 1rem 0 1.45rem;
+        align-items: center;
+        gap: 0;
+        margin: 1.15rem 0 1.25rem;
+        padding: 0.85rem 1rem;
+        border: 1px solid var(--mp-border);
+        border-radius: 14px;
+        background: var(--mp-white);
+        box-shadow: var(--mp-shadow);
     }
 
     .mp-step {
-        min-height: 74px;
-        padding: 0.85rem 0.9rem;
-        border: 1px solid var(--mp-border);
-        border-radius: 14px;
-        background: var(--background-color);
-        box-shadow: 0 5px 18px rgba(20, 34, 74, 0.04);
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        min-width: 0;
+        color: #8a94a7;
+        font-size: 0.88rem;
+        font-weight: 700;
     }
 
-    .mp-step-number {
-        display: inline-grid;
-        width: 1.65rem;
-        height: 1.65rem;
+    .mp-step:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        left: calc(50% + 1.5rem);
+        right: 0.75rem;
+        top: 50%;
+        height: 2px;
+        background: #dfe5ef;
+        transform: translateY(-50%);
+        z-index: 0;
+    }
+
+    .mp-step.completed:not(:last-child)::after {
+        background: #7da28e;
+    }
+
+    .mp-step-badge {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        width: 1.8rem;
+        height: 1.8rem;
+        flex: 0 0 1.8rem;
         place-items: center;
-        margin-right: 0.35rem;
+        border: 2px solid #cfd6e2;
         border-radius: 50%;
-        background: rgba(54, 89, 227, 0.12);
-        color: var(--mp-primary);
+        background: var(--mp-white);
+        color: #7a8598;
         font-size: 0.78rem;
         font-weight: 800;
     }
 
-    .mp-step strong {
-        font-size: 0.91rem;
+    .mp-step.current {
+        color: var(--mp-blue-dark);
     }
 
-    .mp-step small {
-        display: block;
-        margin-top: 0.35rem;
-        color: color-mix(in srgb, var(--text-color) 70%, transparent);
-        line-height: 1.35;
+    .mp-step.current .mp-step-badge {
+        border-color: var(--mp-blue);
+        background: var(--mp-blue);
+        color: white;
+        box-shadow: 0 0 0 4px rgba(49, 87, 213, 0.12);
     }
 
-    .mp-section-heading {
-        margin: 1.6rem 0 0.75rem;
+    .mp-step.completed {
+        color: #355c47;
     }
 
-    .mp-section-heading h2 {
+    .mp-step.completed .mp-step-badge {
+        border-color: var(--mp-green);
+        background: var(--mp-green-soft);
+        color: var(--mp-green);
+    }
+
+    .mp-section-head {
+        margin: 1.35rem 0 0.65rem;
+    }
+
+    .mp-section-head h2 {
         margin: 0;
-        font-size: 1.45rem;
+        font-size: 1.28rem;
     }
 
-    .mp-section-heading p {
+    .mp-section-head p {
         margin: 0.25rem 0 0;
-        color: color-mix(in srgb, var(--text-color) 68%, transparent);
+        color: var(--mp-muted);
+        font-size: 0.93rem;
     }
 
-    .mp-status-card {
-        padding: 0.95rem 1rem;
+    .mp-status-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem 1rem;
+        align-items: center;
+        margin-top: 0.65rem;
+        padding: 0.72rem 0.85rem;
         border: 1px solid var(--mp-border);
-        border-radius: 14px;
-        background: var(--background-color);
-    }
-
-    .mp-status-card strong {
-        display: block;
-        margin-bottom: 0.25rem;
-    }
-
-    .mp-good {
-        border-left: 4px solid var(--mp-success);
-    }
-
-    .mp-warn {
-        border-left: 4px solid var(--mp-warning);
-    }
-
-    .mp-muted {
-        color: color-mix(in srgb, var(--text-color) 66%, transparent);
+        border-radius: 11px;
+        background: #fafbfe;
+        color: var(--mp-ink);
         font-size: 0.9rem;
     }
 
-    .mp-callout {
-        padding: 0.9rem 1rem;
-        border: 1px solid rgba(54, 89, 227, 0.20);
-        border-radius: 14px;
-        background: rgba(54, 89, 227, 0.06);
+    .mp-status-item {
+        display: inline-flex;
+        gap: 0.38rem;
+        align-items: center;
     }
 
-    .mp-footer {
-        margin-top: 2.2rem;
-        padding-top: 1rem;
-        border-top: 1px solid var(--mp-border);
-        color: color-mix(in srgb, var(--text-color) 62%, transparent);
-        font-size: 0.83rem;
-        text-align: center;
+    .mp-success-text {
+        color: var(--mp-green);
+        font-weight: 700;
+    }
+
+    .mp-warning-text {
+        color: var(--mp-amber);
+        font-weight: 700;
+    }
+
+    .mp-neutral-text {
+        color: var(--mp-muted);
+    }
+
+    .mp-overlap {
+        margin-top: 0.55rem;
+        padding: 0.7rem 0.8rem;
+        border: 1px solid #efc46f;
+        border-radius: 10px;
+        background: var(--mp-amber-soft);
+        color: #6d4700;
+        font-size: 0.9rem;
+    }
+
+    .mp-overlap strong {
+        color: #5c3c00;
+    }
+
+    .mp-completion {
+        padding: 0.85rem 1rem;
+        border: 1px solid #b8dec9;
+        border-radius: 12px;
+        background: var(--mp-green-soft);
+        color: #24593a;
+    }
+
+    .mp-completion strong {
+        color: #17482e;
+    }
+
+    .mp-privacy {
+        margin-top: 0.65rem;
+        color: var(--mp-muted);
+        font-size: 0.82rem;
     }
 
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-color: var(--mp-border);
-        border-radius: var(--mp-radius);
+        border-color: var(--mp-border) !important;
+        border-radius: 14px !important;
+        background: var(--mp-white) !important;
         box-shadow: var(--mp-shadow);
-        background: color-mix(in srgb, var(--background-color) 94%, transparent);
     }
 
     div[data-testid="stFileUploaderDropzone"] {
-        min-height: 168px;
-        border: 2px dashed color-mix(in srgb, var(--mp-primary) 45%, var(--mp-border));
-        border-radius: 18px;
-        background: rgba(54, 89, 227, 0.035);
-        transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+        min-height: 150px;
+        border: 2px dashed #aebce2 !important;
+        border-radius: 13px !important;
+        background: #f8faff !important;
     }
 
     div[data-testid="stFileUploaderDropzone"]:hover {
-        border-color: var(--mp-primary);
-        background: rgba(54, 89, 227, 0.07);
-        transform: translateY(-1px);
+        border-color: var(--mp-blue) !important;
+        background: var(--mp-blue-soft) !important;
     }
 
     div.stButton > button,
     div.stDownloadButton > button,
     [data-testid="stFormSubmitButton"] > button {
-        min-height: 46px;
-        border-radius: 12px;
+        min-height: 44px;
+        border-radius: 10px;
         font-weight: 750;
-        transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
-    }
-
-    div.stButton > button:hover,
-    div.stDownloadButton > button:hover,
-    [data-testid="stFormSubmitButton"] > button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 18px rgba(37, 61, 168, 0.14);
     }
 
     div.stButton > button:focus-visible,
     div.stDownloadButton > button:focus-visible,
-    [data-testid="stFormSubmitButton"] > button:focus-visible,
     input:focus-visible,
-    textarea:focus-visible {
-        outline: 3px solid rgba(54, 89, 227, 0.32) !important;
+    textarea:focus-visible,
+    [role="button"]:focus-visible {
+        outline: 3px solid rgba(49, 87, 213, 0.3) !important;
         outline-offset: 2px;
     }
 
     button[kind="primary"] {
-        border-color: var(--mp-primary) !important;
-        background: linear-gradient(135deg, var(--mp-primary), var(--mp-primary-dark)) !important;
+        border-color: var(--mp-blue) !important;
+        background: var(--mp-blue) !important;
+    }
+
+    button[kind="primary"]:hover {
+        border-color: var(--mp-blue-dark) !important;
+        background: var(--mp-blue-dark) !important;
     }
 
     [data-testid="stMetric"] {
-        min-height: 112px;
-        padding: 1rem;
+        min-height: 105px;
+        padding: 0.9rem;
         border: 1px solid var(--mp-border);
-        border-radius: 15px;
-        background: var(--background-color);
-        box-shadow: 0 7px 20px rgba(20, 34, 74, 0.05);
+        border-radius: 12px;
+        background: var(--mp-white);
+        box-shadow: var(--mp-shadow);
     }
 
     [data-testid="stMetricLabel"] {
-        color: color-mix(in srgb, var(--text-color) 66%, transparent);
-    }
-
-    [data-testid="stMetricValue"] {
-        font-size: clamp(1.45rem, 4vw, 2rem);
+        color: var(--mp-muted);
     }
 
     [data-baseweb="tab-list"] {
-        gap: 0.35rem;
-        padding: 0.25rem;
-        border-radius: 12px;
-        background: var(--mp-surface-soft);
+        gap: 0.3rem;
+        padding: 0.2rem;
+        border-radius: 10px;
+        background: #edf1f7;
     }
 
     [data-baseweb="tab"] {
         min-height: 42px;
-        border-radius: 9px;
-        padding-inline: 1rem;
+        border-radius: 8px;
     }
 
     [aria-selected="true"][data-baseweb="tab"] {
-        background: var(--background-color);
-        box-shadow: 0 3px 12px rgba(20, 34, 74, 0.08);
+        background: var(--mp-white);
+        color: var(--mp-ink);
+        box-shadow: 0 2px 8px rgba(32, 48, 88, 0.08);
     }
 
     [data-testid="stDataFrame"] {
         border: 1px solid var(--mp-border);
-        border-radius: 14px;
+        border-radius: 11px;
         overflow: hidden;
     }
 
-    @media (max-width: 780px) {
-        .block-container {
-            padding-top: 1rem;
-            padding-inline: 0.9rem;
-        }
+    .st-key-sticky_action_bar {
+        border-top: 1px solid var(--mp-border);
+        background: rgba(255, 255, 255, 0.97);
+        box-shadow: 0 -8px 28px rgba(32, 48, 88, 0.10);
+        backdrop-filter: blur(12px);
+    }
 
-        .mp-hero {
-            padding: 1.45rem;
-            border-radius: 18px;
+    .st-key-sticky_action_bar > div {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0.55rem 1rem;
+    }
+
+    .mp-action-summary {
+        padding-top: 0.55rem;
+        color: var(--mp-muted);
+        font-size: 0.9rem;
+    }
+
+    .mp-footer {
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--mp-border);
+        color: var(--mp-muted);
+        font-size: 0.8rem;
+        text-align: center;
+    }
+
+    @media (max-width: 760px) {
+        .block-container {
+            padding: 0.8rem 0.8rem 7rem;
         }
 
         .mp-stepper {
             grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .mp-step::after {
+            display: none;
+        }
+
+        .mp-step-label {
+            white-space: normal;
         }
     }
 
@@ -440,173 +486,19 @@ st.markdown(
         *,
         *::before,
         *::after {
+            scroll-behavior: auto !important;
             animation-duration: 0.01ms !important;
             animation-iteration-count: 1 !important;
             transition-duration: 0.01ms !important;
         }
     }
-    
-    /* ================================================================
-       FORCED LIGHT VISUAL SYSTEM
-       The app stays light even when the browser or operating system is
-       using dark mode. Streamlit's official theme is also set in
-       .streamlit/config.toml.
-       ================================================================ */
-
-    html,
-    body,
-    [data-testid="stAppViewContainer"],
-    .stApp {
-        color-scheme: light !important;
-        background: #f6f8fc !important;
-        color: #172033 !important;
-    }
-
-    [data-testid="stHeader"] {
-        background: rgba(246, 248, 252, 0.94) !important;
-        border-bottom: 1px solid #e4e9f2;
-        backdrop-filter: blur(12px);
-    }
-
-    [data-testid="stSidebar"] {
-        background: #ffffff !important;
-        color: #172033 !important;
-        border-right: 1px solid #e4e9f2 !important;
-    }
-
-    [data-testid="stSidebarContent"],
-    [data-testid="stSidebarContent"] p,
-    [data-testid="stSidebarContent"] label {
-        color: #172033 !important;
-    }
-
-    .mp-hero {
-        border: 1px solid #dce4f4 !important;
-        background:
-            radial-gradient(circle at 92% 12%, rgba(54, 89, 227, 0.13), transparent 18rem),
-            radial-gradient(circle at 8% 88%, rgba(17, 168, 160, 0.11), transparent 17rem),
-            linear-gradient(135deg, #ffffff 0%, #f0f4ff 58%, #eefbf9 100%) !important;
-        box-shadow: 0 16px 38px rgba(38, 57, 112, 0.10) !important;
-        color: #172033 !important;
-    }
-
-    .mp-hero::after {
-        background: rgba(54, 89, 227, 0.055) !important;
-    }
-
-    .mp-eyebrow {
-        color: #2948bd !important;
-        background: #eaf0ff !important;
-        border-color: #d2ddff !important;
-    }
-
-    .mp-hero h1 {
-        color: #172033 !important;
-    }
-
-    .mp-hero p {
-        color: #4e5c75 !important;
-    }
-
-    .mp-step,
-    .mp-status-card,
-    [data-testid="stMetric"],
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background: #ffffff !important;
-        border-color: #e1e7f0 !important;
-        color: #172033 !important;
-    }
-
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        box-shadow: 0 10px 28px rgba(40, 56, 98, 0.065) !important;
-    }
-
-    div[data-testid="stFileUploaderDropzone"] {
-        background: #f8faff !important;
-        border-color: #aebeea !important;
-    }
-
-    div[data-testid="stFileUploaderDropzone"]:hover {
-        background: #f0f4ff !important;
-        border-color: #3659e3 !important;
-    }
-
-    input,
-    textarea,
-    [data-baseweb="select"] > div,
-    [data-baseweb="input"] > div {
-        background: #ffffff !important;
-        color: #172033 !important;
-    }
-
-    [data-baseweb="tab-list"] {
-        background: #edf1f7 !important;
-    }
-
-    [aria-selected="true"][data-baseweb="tab"] {
-        background: #ffffff !important;
-        color: #172033 !important;
-    }
-
-    [data-testid="stDataFrame"],
-    [data-testid="stTable"] {
-        background: #ffffff !important;
-    }
-
-    .mp-callout {
-        background: #edf3ff !important;
-        border-color: #cddaff !important;
-        color: #243454 !important;
-    }
-
-    .mp-muted,
-    .mp-section-heading p,
-    .mp-footer {
-        color: #5b6880 !important;
-    }
-
-    .mp-new-analysis-row {
-        margin: -0.2rem 0 0.8rem;
-    }
-
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# =============================================================================
-# DATA AND VALIDATION HELPERS
-# =============================================================================
-
-def parse_note_list(text: str) -> list[int]:
-    """Convert comma, semicolon, or whitespace-separated values into MIDI notes."""
-    pieces = [item for item in re.split(r"[\s,;]+", text.strip()) if item]
-    if not pieces:
-        raise ValueError("Enter at least one upper-extremity MIDI note value.")
-
-    values: list[int] = []
-    for piece in pieces:
-        try:
-            value = int(piece)
-        except ValueError as exc:
-            raise ValueError(
-                f'"{piece}" is not a whole MIDI note number.'
-            ) from exc
-
-        if not 0 <= value <= 127:
-            raise ValueError(
-                f"MIDI note {value} is outside the valid range of 0 to 127."
-            )
-
-        if value not in values:
-            values.append(value)
-
-    return values
-
-
 def safe_filename(original_name: str, used_names: set[str]) -> str:
-    """Create a unique lowercase .mid filename for MidiPy."""
     stem = Path(original_name).stem
     stem = re.sub(r"[^A-Za-z0-9_-]+", "_", stem).strip("_") or "midi_file"
 
@@ -629,7 +521,6 @@ def human_file_size(size_bytes: int) -> str:
 
 
 def precheck_uploads(uploaded_files) -> tuple[list[dict[str, Any]], int, int]:
-    """Perform a quick non-destructive check before the user starts analysis."""
     rows: list[dict[str, Any]] = []
     ready_count = 0
     total_size = 0
@@ -641,16 +532,16 @@ def precheck_uploads(uploaded_files) -> tuple[list[dict[str, Any]], int, int]:
         total_size += size
 
         if original_name.startswith("."):
-            status = "Needs attention"
+            status = "⚠ Needs attention"
             detail = "Hidden system file"
         elif size == 0:
-            status = "Needs attention"
+            status = "✕ Invalid"
             detail = "Empty file"
         elif data[:4] != b"MThd":
-            status = "Needs attention"
+            status = "✕ Invalid"
             detail = "Standard MIDI header is missing"
         else:
-            status = "Ready"
+            status = "✓ Ready"
             detail = "Basic file check passed"
             ready_count += 1
 
@@ -667,7 +558,6 @@ def precheck_uploads(uploaded_files) -> tuple[list[dict[str, Any]], int, int]:
 
 
 def validate_and_save_uploads(uploaded_files, folder: Path):
-    """Save only genuine, MidiPy-readable files into a clean temporary folder."""
     valid_names: list[str] = []
     skipped: list[tuple[str, str]] = []
     used_names: set[str] = set()
@@ -680,15 +570,12 @@ def validate_and_save_uploads(uploaded_files, folder: Path):
         try:
             if original_name.startswith("."):
                 raise ValueError("Hidden system file")
-
             if not data:
                 raise ValueError("The file is empty")
-
             if data[:4] != b"MThd":
                 raise ValueError("The Standard MIDI MThd header is missing")
 
-            destination_name = safe_filename(original_name, used_names)
-            destination = folder / destination_name
+            destination = folder / safe_filename(original_name, used_names)
             destination.write_bytes(data)
 
             midi = readmidi(str(destination))
@@ -696,7 +583,6 @@ def validate_and_save_uploads(uploaded_files, folder: Path):
 
             if notes is None or len(notes) == 0:
                 raise ValueError("No readable MIDI notes were found")
-
             if tempos is None or len(tempos) == 0:
                 raise ValueError("No readable tempo information was found")
 
@@ -711,7 +597,6 @@ def validate_and_save_uploads(uploaded_files, folder: Path):
 
 
 def upload_signature(uploaded_files) -> str:
-    """Create a stable signature so stale results are never shown as current."""
     digest = hashlib.sha256()
     for uploaded_file in uploaded_files or []:
         data = uploaded_file.getvalue()
@@ -727,7 +612,6 @@ def settings_signature(settings: dict[str, Any]) -> str:
 
 
 def mean_from_metric(value: Any) -> float | None:
-    """Extract the leading mean from a value such as '45.37 (14.25)'."""
     if value is None:
         return None
 
@@ -746,46 +630,7 @@ def mean_from_metric(value: Any) -> float | None:
         return None
 
 
-def display_dataframe(dataframe: pd.DataFrame) -> None:
-    """Display a result table with human-readable column headings."""
-    display_df = dataframe.rename(columns=METRIC_LABELS)
-
-    column_config: dict[str, Any] = {}
-    for source_name, display_name in METRIC_LABELS.items():
-        if source_name not in dataframe.columns:
-            continue
-
-        help_text = METRIC_HELP.get(source_name)
-        source_series = dataframe[source_name]
-
-        if source_name in COUNT_METRICS or source_name == "Segment_Number":
-            column_config[display_name] = st.column_config.NumberColumn(
-                display_name,
-                help=help_text,
-                format="%.0f",
-            )
-        elif pd.api.types.is_numeric_dtype(source_series):
-            column_config[display_name] = st.column_config.NumberColumn(
-                display_name,
-                help=help_text,
-                format="%.2f",
-            )
-        else:
-            column_config[display_name] = st.column_config.TextColumn(
-                display_name,
-                help=help_text,
-            )
-
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config=column_config,
-    )
-
-
 def average_segment_rows(segment_df: pd.DataFrame) -> pd.DataFrame:
-    """Average each segment index across files without using MidiPy's fragile path."""
     if "Name" not in segment_df.columns:
         return segment_df
 
@@ -834,7 +679,6 @@ def average_segment_rows(segment_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def dataframe_to_excel_bytes(sheets: dict[str, pd.DataFrame]) -> bytes:
-    """Build a formatted workbook suitable for nontechnical users."""
     output = io.BytesIO()
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -850,14 +694,8 @@ def dataframe_to_excel_bytes(sheets: dict[str, pd.DataFrame]) -> bytes:
             worksheet.freeze_panes = "A2"
             worksheet.auto_filter.ref = worksheet.dimensions
 
-            header_fill = PatternFill(
-                fill_type="solid",
-                fgColor="3659E3",
-            )
-            header_font = Font(
-                color="FFFFFF",
-                bold=True,
-            )
+            header_fill = PatternFill(fill_type="solid", fgColor="3157D5")
+            header_font = Font(color="FFFFFF", bold=True)
 
             for cell in worksheet[1]:
                 cell.fill = header_fill
@@ -886,6 +724,7 @@ def dataframe_to_excel_bytes(sheets: dict[str, pd.DataFrame]) -> bytes:
 
 def dataframes_to_csv_zip(sheets: dict[str, pd.DataFrame]) -> bytes:
     output = io.BytesIO()
+
     with zipfile.ZipFile(
         output,
         mode="w",
@@ -897,20 +736,53 @@ def dataframes_to_csv_zip(sheets: dict[str, pd.DataFrame]) -> bytes:
                 f"{name}.csv",
                 export_df.to_csv(index=False).encode("utf-8"),
             )
+
     return output.getvalue()
 
 
+def display_dataframe(dataframe: pd.DataFrame) -> None:
+    display_df = dataframe.rename(columns=METRIC_LABELS)
+    column_config: dict[str, Any] = {}
+
+    for source_name, display_name in METRIC_LABELS.items():
+        if source_name not in dataframe.columns:
+            continue
+
+        help_text = METRIC_HELP.get(source_name)
+        source_series = dataframe[source_name]
+
+        if source_name in COUNT_METRICS or source_name == "Segment_Number":
+            column_config[display_name] = st.column_config.NumberColumn(
+                display_name,
+                help=help_text,
+                format="%.0f",
+            )
+        elif pd.api.types.is_numeric_dtype(source_series):
+            column_config[display_name] = st.column_config.NumberColumn(
+                display_name,
+                help=help_text,
+                format="%.2f",
+            )
+        else:
+            column_config[display_name] = st.column_config.TextColumn(
+                display_name,
+                help=help_text,
+            )
+
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config=column_config,
+    )
+
+
 def result_summary(dataframe: pd.DataFrame) -> dict[str, float | None]:
-    """Create meaningful high-level values from whole-file results."""
     data = dataframe.copy()
 
     if "Name" in data.columns:
-        totals_rows = data[
-            data["Name"].astype(str).str.upper().eq("TOTALS")
-        ]
-        non_total_rows = data[
-            ~data["Name"].astype(str).str.upper().eq("TOTALS")
-        ]
+        totals_rows = data[data["Name"].astype(str).str.upper().eq("TOTALS")]
+        non_total_rows = data[~data["Name"].astype(str).str.upper().eq("TOTALS")]
     else:
         totals_rows = pd.DataFrame()
         non_total_rows = data
@@ -935,17 +807,13 @@ def result_summary(dataframe: pd.DataFrame) -> dict[str, float | None]:
         if not totals_rows.empty:
             summary[key] = mean_from_metric(totals_rows.iloc[0][column])
         else:
-            numeric = pd.to_numeric(
-                non_total_rows[column],
-                errors="coerce",
-            )
+            numeric = pd.to_numeric(non_total_rows[column], errors="coerce")
             summary[key] = float(numeric.sum()) if numeric.notna().any() else None
 
     return summary
 
 
 def chartable_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Convert display-formatted result fields into chartable mean values."""
     output = dataframe.copy()
 
     for column in output.columns:
@@ -960,12 +828,6 @@ def render_result_chart(
     dataframe: pd.DataFrame,
     result_name: str,
 ) -> None:
-    """Render charts with an explicit Vega-Lite specification.
-
-    The explicit long-form data and fixed field names avoid Altair schema
-    errors that can occur when st.line_chart or st.bar_chart infer fields from
-    pivoted DataFrames, especially with Altair 6.
-    """
     available = [
         metric
         for metric in AVAILABLE_METRICS
@@ -983,14 +845,14 @@ def render_result_chart(
     )
 
     selected_metric = st.selectbox(
-        "Metric to visualize",
+        "Metric",
         options=available,
         index=available.index(default_metric),
         format_func=lambda metric: METRIC_LABELS.get(metric, metric),
-        key=f"chart_metric_{result_name}",
+        key=f"chart_metric_{result_name}_{analysis_cycle}",
         help=(
-            "The chart uses the mean value when a table cell contains "
-            "a mean and standard deviation."
+            "When a cell contains a mean and standard deviation, "
+            "the chart uses the mean."
         ),
     )
 
@@ -1017,20 +879,10 @@ def render_result_chart(
             chart_df["Session"] = (
                 chart_df["Name"]
                 .astype(str)
-                .str.replace(
-                    r"\s*Segment\s+\d+\s*$",
-                    "",
-                    regex=True,
-                )
+                .str.replace(r"\s*Segment\s+\d+\s*$", "", regex=True)
                 .str.strip()
             )
-
-            # Averaged segment output is named only "Segment 1", etc.,
-            # which leaves an empty session label after removing the suffix.
-            chart_df.loc[
-                chart_df["Session"].eq(""),
-                "Session",
-            ] = "Average"
+            chart_df.loc[chart_df["Session"].eq(""), "Session"] = "Average"
 
             segment_chart = (
                 chart_df[["Segment", "Session", selected_metric]]
@@ -1038,7 +890,6 @@ def render_result_chart(
                 .rename(columns={selected_metric: "Value"})
             )
             segment_chart["Segment"] = segment_chart["Segment"].astype(int)
-            segment_chart["Session"] = segment_chart["Session"].astype(str)
             segment_chart["Value"] = pd.to_numeric(
                 segment_chart["Value"],
                 errors="coerce",
@@ -1092,30 +943,20 @@ def render_result_chart(
                         },
                     },
                     width="stretch",
-                    height=420,
-                    key=f"segment_vega_{result_name}_{selected_metric}",
+                    height=390,
+                    key=f"segment_chart_{selected_metric}_{analysis_cycle}",
                 )
                 return
 
         whole_chart = (
             chart_df[["Name", selected_metric]]
-            .rename(
-                columns={
-                    "Name": "Session",
-                    selected_metric: "Value",
-                }
-            )
+            .rename(columns={"Name": "Session", selected_metric: "Value"})
         )
-        whole_chart["Session"] = whole_chart["Session"].astype(str)
         whole_chart["Value"] = pd.to_numeric(
             whole_chart["Value"],
             errors="coerce",
         )
         whole_chart = whole_chart.dropna(subset=["Value"])
-
-        if whole_chart.empty:
-            st.info("The selected metric has no chartable numeric values.")
-            return
 
         st.vega_lite_chart(
             whole_chart,
@@ -1157,18 +998,17 @@ def render_result_chart(
                 },
             },
             width="stretch",
-            height=420,
-            key=f"whole_vega_{result_name}_{selected_metric}",
+            height=390,
+            key=f"whole_chart_{selected_metric}_{analysis_cycle}",
         )
 
     except Exception as chart_error:
-        # A chart must never stop users from reaching their data or downloads.
         st.warning(
-            "The visual chart could not be displayed, but the result tables "
-            "and downloads remain available."
+            "The chart could not be displayed, but tables and downloads remain available."
         )
         with st.expander("Chart diagnostic details"):
             st.code(str(chart_error))
+
 
 def clear_analysis_state() -> None:
     for key in [
@@ -1182,9 +1022,7 @@ def clear_analysis_state() -> None:
         st.session_state.pop(key, None)
 
 
-
 def start_new_analysis() -> None:
-    """Reset results, uploaded files, and all configurable controls."""
     clear_analysis_state()
     st.session_state["analysis_cycle"] = (
         int(st.session_state.get("analysis_cycle", 0)) + 1
@@ -1192,111 +1030,127 @@ def start_new_analysis() -> None:
     st.rerun()
 
 
-# =============================================================================
-# SIDEBAR: SUPPORTING, NON-CRITICAL CONTENT
-# =============================================================================
+@st.dialog("Start a new analysis?")
+def confirm_new_analysis() -> None:
+    st.write(
+        "This will remove the current uploads, settings, and displayed results."
+    )
+    confirm_column, cancel_column = st.columns(2)
 
-with st.sidebar:
-    st.header("MidiPy help")
+    with confirm_column:
+        if st.button(
+            "Start new analysis",
+            type="primary",
+            use_container_width=True,
+            key=f"confirm_reset_{analysis_cycle}",
+        ):
+            start_new_analysis()
+
+    with cancel_column:
+        if st.button(
+            "Keep current analysis",
+            use_container_width=True,
+            key=f"cancel_reset_{analysis_cycle}",
+        ):
+            st.rerun()
+
+
+upload_key = f"midi_upload_{analysis_cycle}"
+existing_uploads = st.session_state.get(upload_key, [])
+existing_results = st.session_state.get("midipy_results")
+
+title_column, help_column, reset_column = st.columns(
+    [6, 1.15, 1.45],
+    vertical_alignment="center",
+)
+
+with title_column:
     st.markdown(
         """
-        **Recommended workflow**
-
-        1. Upload one or more MIDI files.
-        2. Review the automatic file check.
-        3. Confirm the body-part mappings.
-        4. Run the analysis.
-        5. Review and export results.
-        """
+        <h1 class="mp-brand">MidiPy Analysis Studio</h1>
+        <p class="mp-subtitle">
+            Validate MIDI files, configure mappings, analyze performance, and export results.
+        </p>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.divider()
-
-    st.subheader("Terminology")
-    st.markdown(
-        """
-        **UE** — upper extremity  
-        **LF** — left foot  
-        **RF** — right foot  
-        **Velocity** — MIDI performance intensity  
-        **Asynchrony** — timing difference from the quantized beat
-        """
-    )
-
-    st.divider()
-
-    st.subheader("Privacy")
-    st.caption(
-        "This hosted app temporarily processes uploaded files to create results. "
-        "Use de-identified research files and follow institutional data-handling rules."
-    )
-
-    if st.button(
-        "↻ Start new analysis",
+with help_column:
+    with st.popover(
+        "Help",
         use_container_width=True,
-        help="Removes the current uploads and results and restores the default settings.",
-        key=f"new_analysis_sidebar_{analysis_cycle}",
     ):
-        start_new_analysis()
+        st.markdown(
+            """
+            **Workflow**
 
+            1. Upload one or more `.mid` or `.midi` files.
+            2. Confirm the body-part mappings.
+            3. Choose the analysis scope and results.
+            4. Analyze, review, and export.
 
-# =============================================================================
-# HERO AND WORKFLOW
-# =============================================================================
+            **Terminology**
+
+            - **UE:** upper extremity
+            - **LF:** left foot
+            - **RF:** right foot
+            - **Velocity:** MIDI performance intensity
+            - **Asynchrony:** timing difference from the quantized beat
+            """
+        )
+
+with reset_column:
+    if st.button(
+        "New analysis",
+        use_container_width=True,
+        key=f"new_analysis_top_{analysis_cycle}",
+    ):
+        if existing_uploads or existing_results:
+            confirm_new_analysis()
+        else:
+            start_new_analysis()
+
+if existing_results:
+    current_stage = 4
+elif existing_uploads:
+    current_stage = 2
+else:
+    current_stage = 1
+
+step_labels = ["Upload", "Configure", "Analyze", "Review"]
+step_html = []
+
+for index, label in enumerate(step_labels, start=1):
+    if index < current_stage:
+        state_class = "completed"
+        badge = "✓"
+    elif index == current_stage:
+        state_class = "current"
+        badge = str(index)
+    else:
+        state_class = "upcoming"
+        badge = str(index)
+
+    step_html.append(
+        f"""
+        <div class="mp-step {state_class}">
+            <span class="mp-step-badge">{badge}</span>
+            <span class="mp-step-label">{label}</span>
+        </div>
+        """
+    )
 
 st.markdown(
-    """
-    <section class="mp-hero" aria-labelledby="midipy-title">
-        <span class="mp-eyebrow">Human-centred MIDI analysis</span>
-        <h1 id="midipy-title">MidiPy Analysis Studio</h1>
-        <p>
-            A guided workspace for validating MIDI files, configuring body-part
-            mappings, reviewing performance measures, and exporting clear results.
-        </p>
-    </section>
-
-    <div class="mp-stepper" aria-label="Analysis workflow">
-        <div class="mp-step">
-            <span class="mp-step-number">1</span><strong>Upload</strong>
-            <small>Add one or more Standard MIDI files.</small>
-        </div>
-        <div class="mp-step">
-            <span class="mp-step-number">2</span><strong>Configure</strong>
-            <small>Confirm note mappings and analysis options.</small>
-        </div>
-        <div class="mp-step">
-            <span class="mp-step-number">3</span><strong>Analyze</strong>
-            <small>Validate and process the files securely.</small>
-        </div>
-        <div class="mp-step">
-            <span class="mp-step-number">4</span><strong>Review</strong>
-            <small>Inspect, visualize, and export the results.</small>
-        </div>
-    </div>
-    """,
+    '<div class="mp-stepper">' + "".join(step_html) + "</div>",
     unsafe_allow_html=True,
 )
 
-new_action_space, new_action_button = st.columns([4, 1])
-with new_action_button:
-    if st.button(
-        "↻ Start new analysis",
-        use_container_width=True,
-        help="Clear uploaded files, results, and settings and begin again.",
-        key=f"new_analysis_main_{analysis_cycle}",
-    ):
-        start_new_analysis()
-
-
-# =============================================================================
-# STEP 1: UPLOAD
-# =============================================================================
 
 st.markdown(
     """
-    <div class="mp-section-heading">
+    <div class="mp-section-head">
         <h2>1. Upload MIDI files</h2>
-        <p>Select all sessions that should be included in this analysis.</p>
+        <p>Add all sessions that belong to this analysis.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -1304,40 +1158,43 @@ st.markdown(
 
 with st.container(border=True):
     uploaded_files = st.file_uploader(
-        "MIDI files",
+        "Drag and drop MIDI files or browse",
         type=["mid", "midi"],
         accept_multiple_files=True,
-        help="Supported extensions: .mid and .midi. Multiple files can be selected together.",
-        key=f"midi_upload_{analysis_cycle}",
+        key=upload_key,
+        help="Supported formats: MID and MIDI. Maximum size is controlled by the host.",
     )
 
     precheck_rows, ready_count, total_size = precheck_uploads(uploaded_files)
     attention_count = len(precheck_rows) - ready_count
 
     if uploaded_files:
-        status_left, status_middle, status_right = st.columns(3)
+        ready_text = (
+            f'<span class="mp-success-text">✓ {ready_count} ready</span>'
+            if ready_count
+            else '<span class="mp-warning-text">No ready files</span>'
+        )
+        attention_text = (
+            f'<span class="mp-warning-text">⚠ {attention_count} need attention</span>'
+            if attention_count
+            else '<span class="mp-neutral-text">No file problems detected</span>'
+        )
 
-        with status_left:
-            st.metric("Files selected", len(uploaded_files))
-
-        with status_middle:
-            st.metric("Ready after basic check", ready_count)
-
-        with status_right:
-            st.metric("Combined size", human_file_size(total_size))
-
-        if attention_count:
-            st.warning(
-                f"{attention_count} file(s) need attention and will be skipped "
-                "unless replaced."
-            )
-        else:
-            st.success(
-                "All selected files passed the basic MIDI header check."
-            )
+        st.markdown(
+            f"""
+            <div class="mp-status-strip">
+                <span class="mp-status-item">{ready_text}</span>
+                <span class="mp-status-item">{attention_text}</span>
+                <span class="mp-status-item mp-neutral-text">
+                    {human_file_size(total_size)} total
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         with st.expander(
-            "Review selected files",
+            f"View file details · {len(uploaded_files)} selected",
             expanded=attention_count > 0,
         ):
             st.dataframe(
@@ -1346,168 +1203,265 @@ with st.container(border=True):
                 hide_index=True,
             )
     else:
-        st.info(
-            "No files have been selected. Use the upload area above to begin."
-        )
+        st.caption("No files selected · Supported formats: MID and MIDI")
 
+    st.markdown(
+        """
+        <div class="mp-privacy">
+            Privacy: files are copied to a temporary workspace during analysis and
+            removed afterward. Use de-identified files and follow institutional rules.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-# =============================================================================
-# STEP 2: CONFIGURE
-# =============================================================================
 
 st.markdown(
     """
-    <div class="mp-section-heading">
+    <div class="mp-section-head">
         <h2>2. Configure the analysis</h2>
-        <p>Defaults are already prepared. Change them only when your MIDI mapping requires it.</p>
+        <p>Defaults are prepared. Change only what is required for this dataset.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-with st.container(border=True):
-    st.subheader("Body-part note mapping")
+mapping_column, scope_column = st.columns(
+    [1.08, 0.92],
+    gap="medium",
+)
 
-    ue_text = st.text_area(
-        "Upper-extremity (UE) MIDI note values",
-        value=", ".join(str(value) for value in DEFAULT_UE_KEYS),
-        help=(
-            "Enter whole MIDI note numbers from 0 to 127. "
-            "Separate values with commas, spaces, or semicolons."
-        ),
-        height=118,
-        key=f"ue_note_values_{analysis_cycle}",
-    )
+with mapping_column:
+    with st.container(border=True):
+        st.subheader("Body-part mapping")
+        st.caption("Choose note numbers instead of editing an encoded text string.")
 
-    mapping_left, mapping_right = st.columns(2)
-
-    with mapping_left:
-        left_foot_key = int(
-            st.number_input(
-                "Left-foot (LF) MIDI note value",
-                min_value=0,
-                max_value=127,
-                value=44,
-                step=1,
-                help="One MIDI note number from 0 to 127.",
-                key=f"left_foot_key_{analysis_cycle}",
-            )
-        )
-
-    with mapping_right:
-        right_foot_key = int(
-            st.number_input(
-                "Right-foot (RF) MIDI note value",
-                min_value=0,
-                max_value=127,
-                value=36,
-                step=1,
-                help="One MIDI note number from 0 to 127.",
-                key=f"right_foot_key_{analysis_cycle}",
-            )
-        )
-
-    st.divider()
-    st.subheader("Analysis scope")
-
-    analysis_mode = st.radio(
-        "Choose what to analyze",
-        options=[
-            "Whole files and segments",
-            "Whole files only",
-            "Segments only",
-        ],
-        index=0,
-        horizontal=True,
-        help=(
-            "Whole-file results summarize each complete session. "
-            "Segment results show changes across time."
-        ),
-        key=f"analysis_mode_{analysis_cycle}",
-    )
-
-    run_whole = analysis_mode in {
-        "Whole files and segments",
-        "Whole files only",
-    }
-    run_segments = analysis_mode in {
-        "Whole files and segments",
-        "Segments only",
-    }
-
-    segment_left, segment_right = st.columns(2)
-
-    with segment_left:
-        number_of_segments = int(
-            st.slider(
-                "Number of segments",
-                min_value=2,
-                max_value=20,
-                value=5,
-                disabled=not run_segments,
-                help="Each MIDI file is divided into equal-duration segments.",
-                key=f"segment_count_{analysis_cycle}",
-            )
-        )
-
-    with segment_right:
-        average_segments = st.checkbox(
-            "Average matching segments across files",
-            value=False,
-            disabled=not run_segments,
+        ue_keys = st.multiselect(
+            "Upper-extremity MIDI notes",
+            options=list(range(128)),
+            default=DEFAULT_UE_KEYS,
+            key=f"ue_notes_{analysis_cycle}",
             help=(
-                "For example, all Segment 1 rows are averaged together, "
-                "then all Segment 2 rows, and so on."
+                "Search for a note number, select it, or remove an existing chip. "
+                "MIDI note values range from 0 to 127."
             ),
-            key=f"average_segments_{analysis_cycle}",
+            placeholder="Search and select MIDI note values",
         )
 
-    with st.expander("Advanced result options"):
-        metric_preset = st.radio(
-            "Result detail",
-            options=[
-                "Complete report",
-                "Counts only",
-                "Choose columns",
-            ],
-            index=0,
-            horizontal=True,
-            key=f"metric_preset_{analysis_cycle}",
-        )
+        st.caption(f"{len(ue_keys)} upper-extremity notes selected")
 
-        if metric_preset == "Complete report":
-            selected_metrics = AVAILABLE_METRICS.copy()
-            st.caption("All count, velocity, and asynchrony measures will be included.")
+        foot_left, foot_right = st.columns(2)
 
-        elif metric_preset == "Counts only":
-            selected_metrics = COUNT_METRICS.copy()
-            st.caption("Only total, UE, LF, and RF note counts will be included.")
-
-        else:
-            selected_metrics = st.multiselect(
-                "Columns to include",
-                options=AVAILABLE_METRICS,
-                default=AVAILABLE_METRICS,
-                format_func=lambda metric: METRIC_LABELS.get(metric, metric),
-                help="The session name is included automatically.",
-                key=f"selected_metrics_{analysis_cycle}",
+        with foot_left:
+            left_foot_key = int(
+                st.number_input(
+                    "Left foot",
+                    min_value=0,
+                    max_value=127,
+                    value=44,
+                    step=1,
+                    key=f"left_foot_{analysis_cycle}",
+                    help="One MIDI note value from 0 to 127.",
+                )
             )
 
-    submitted = st.button(
-        "Analyze MIDI files",
-        type="primary",
-        use_container_width=True,
-        disabled=not uploaded_files or ready_count == 0,
-        key=f"analyze_midi_files_{analysis_cycle}",
+        with foot_right:
+            right_foot_key = int(
+                st.number_input(
+                    "Right foot",
+                    min_value=0,
+                    max_value=127,
+                    value=36,
+                    step=1,
+                    key=f"right_foot_{analysis_cycle}",
+                    help="One MIDI note value from 0 to 127.",
+                )
+            )
+
+        overlap_messages: list[str] = []
+
+        ue_foot_overlap = sorted(
+            set(ue_keys) & {left_foot_key, right_foot_key}
+        )
+        if ue_foot_overlap:
+            overlap_messages.append(
+                "UE and foot mapping: "
+                + ", ".join(map(str, ue_foot_overlap))
+            )
+
+        if left_foot_key == right_foot_key:
+            overlap_messages.append(
+                f"Left foot and right foot both use note {left_foot_key}"
+            )
+
+        if overlap_messages:
+            st.markdown(
+                """
+                <div class="mp-overlap">
+                    <strong>⚠ Mapping overlap</strong><br>
+                    {}
+                </div>
+                """.format("<br>".join(overlap_messages)),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.success("Mappings are distinct.")
+
+with scope_column:
+    with st.container(border=True):
+        st.subheader("Analysis scope")
+        st.caption("Select the level of detail needed for this task.")
+
+        analysis_mode = st.segmented_control(
+            "Analysis type",
+            options=[
+                "Whole files + segments",
+                "Whole files only",
+                "Segments only",
+            ],
+            default="Whole files + segments",
+            selection_mode="single",
+            required=True,
+            key=f"analysis_mode_{analysis_cycle}",
+            help=(
+                "Whole-file results summarize complete sessions. "
+                "Segment results show changes across time."
+            ),
+        )
+
+        run_whole = analysis_mode in {
+            "Whole files + segments",
+            "Whole files only",
+        }
+        run_segments = analysis_mode in {
+            "Whole files + segments",
+            "Segments only",
+        }
+
+        if analysis_mode == "Whole files + segments":
+            st.caption("Recommended: summary and time-based detail.")
+        elif analysis_mode == "Whole files only":
+            st.caption("Fastest option: one result row per session.")
+        else:
+            st.caption("Time-based detail without whole-session summaries.")
+
+        if run_segments:
+            with st.container(border=True):
+                st.markdown("**Segment settings**")
+
+                number_of_segments = int(
+                    st.slider(
+                        "Number of segments",
+                        min_value=2,
+                        max_value=20,
+                        value=5,
+                        key=f"segment_count_{analysis_cycle}",
+                        help="Each MIDI file is divided into equal-duration segments.",
+                    )
+                )
+
+                average_segments = st.checkbox(
+                    "Average matching segments across files",
+                    value=False,
+                    key=f"average_segments_{analysis_cycle}",
+                    help=(
+                        "All Segment 1 rows are averaged together, then all Segment 2 "
+                        "rows, and so on."
+                    ),
+                )
+        else:
+            number_of_segments = 5
+            average_segments = False
+
+
+preset_key = f"result_preset_{analysis_cycle}"
+current_preset = st.session_state.get(preset_key, "Complete report")
+
+with st.expander(
+    f"Results to include · {current_preset}",
+    expanded=False,
+):
+    result_preset = st.segmented_control(
+        "Result detail",
+        options=[
+            "Complete report",
+            "Counts only",
+            "Custom",
+        ],
+        default="Complete report",
+        selection_mode="single",
+        required=True,
+        key=preset_key,
     )
 
+    if result_preset == "Complete report":
+        selected_metrics = AVAILABLE_METRICS.copy()
+        st.info(
+            "Includes note counts, velocity, and asynchrony measures."
+        )
 
-# =============================================================================
-# STEP 3: ANALYZE
-# =============================================================================
+    elif result_preset == "Counts only":
+        selected_metrics = COUNT_METRICS.copy()
+        st.info(
+            "Includes total, upper-extremity, left-foot, and right-foot counts."
+        )
+
+    else:
+        metric_rows = []
+        for metric in AVAILABLE_METRICS:
+            metric_rows.append(
+                {
+                    "Include": True,
+                    "Category": METRIC_CATEGORY[metric],
+                    "Measure": METRIC_LABELS[metric],
+                    "Description": METRIC_HELP[metric],
+                }
+            )
+
+        metric_editor = pd.DataFrame(
+            metric_rows,
+            index=AVAILABLE_METRICS,
+        )
+
+        edited_metrics = st.data_editor(
+            metric_editor,
+            use_container_width=True,
+            hide_index=True,
+            disabled=["Category", "Measure", "Description"],
+            key=f"custom_metrics_{analysis_cycle}",
+            column_config={
+                "Include": st.column_config.CheckboxColumn(
+                    "Include",
+                    help="Select the measures to include in the output.",
+                    default=True,
+                    width="small",
+                ),
+                "Category": st.column_config.TextColumn(
+                    "Category",
+                    width="small",
+                ),
+                "Measure": st.column_config.TextColumn(
+                    "Measure",
+                    width="medium",
+                ),
+                "Description": st.column_config.TextColumn(
+                    "Description",
+                    width="large",
+                ),
+            },
+        )
+
+        selected_metrics = edited_metrics.index[
+            edited_metrics["Include"].fillna(False)
+        ].tolist()
+
+        st.caption(
+            f"{len(selected_metrics)} of {len(AVAILABLE_METRICS)} measures selected"
+        )
+
 
 current_settings = {
-    "ue_text": ue_text,
+    "ue_keys": sorted(ue_keys),
     "left_foot_key": left_foot_key,
     "right_foot_key": right_foot_key,
     "analysis_mode": analysis_mode,
@@ -1519,32 +1473,78 @@ current_settings = {
 current_upload_signature = upload_signature(uploaded_files)
 current_settings_signature = settings_signature(current_settings)
 
-if submitted:
-    if not selected_metrics:
-        st.error(
-            "Select at least one result column before running the analysis."
-        )
-        st.stop()
+results = st.session_state.get("midipy_results")
+stored_upload_signature = st.session_state.get(
+    "midipy_analysis_signature"
+)
+stored_settings_signature = st.session_state.get(
+    "midipy_analysis_settings_signature"
+)
 
-    try:
-        ue_keys = parse_note_list(ue_text)
-    except ValueError as error:
-        st.error(str(error))
-        st.stop()
+results_are_current = (
+    bool(results)
+    and stored_upload_signature == current_upload_signature
+    and stored_settings_signature == current_settings_signature
+)
 
-    overlap = sorted(
-        set(ue_keys) & {left_foot_key, right_foot_key}
+results_are_stale = bool(results) and not results_are_current
+
+if results_are_stale:
+    st.warning(
+        "Files or settings changed after the displayed results were created. "
+        "Refresh the analysis to update them."
     )
-    if overlap:
-        st.warning(
-            "Mapping overlap detected: "
-            + ", ".join(map(str, overlap))
-            + ". These values appear in both UE and foot mappings. "
-              "Confirm that this is intentional."
+
+
+analysis_disabled = (
+    not uploaded_files
+    or ready_count == 0
+    or not selected_metrics
+    or not ue_keys
+)
+
+action_label = (
+    "Refresh analysis"
+    if results_are_stale
+    else "Analyze MIDI files"
+)
+
+with st.bottom():
+    with st.container(key="sticky_action_bar"):
+        summary_column, action_column = st.columns(
+            [5, 2],
+            vertical_alignment="center",
         )
 
+        with summary_column:
+            if not uploaded_files:
+                action_summary = "Upload MIDI files to begin."
+            elif ready_count == 0:
+                action_summary = "No valid MIDI file is ready."
+            else:
+                action_summary = (
+                    f"{ready_count} file(s) ready · "
+                    f"{len(selected_metrics)} result measure(s) selected"
+                )
+
+            st.markdown(
+                f'<div class="mp-action-summary">{action_summary}</div>',
+                unsafe_allow_html=True,
+            )
+
+        with action_column:
+            submitted = st.button(
+                action_label,
+                type="primary",
+                use_container_width=True,
+                disabled=analysis_disabled,
+                key=f"analyze_{analysis_cycle}",
+            )
+
+
+if submitted:
     with st.status(
-        "Preparing the analysis…",
+        "Analyzing MIDI files…",
         expanded=True,
     ) as analysis_status:
         try:
@@ -1562,6 +1562,7 @@ if submitted:
                 analysis_status.write(
                     "Validating MIDI headers, note data, and tempo information."
                 )
+
                 valid_names, skipped_files = validate_and_save_uploads(
                     uploaded_files,
                     midi_folder,
@@ -1575,8 +1576,9 @@ if submitted:
                         expanded=True,
                     )
                     st.error(
-                        "None of the selected files passed the complete MIDI validation."
+                        "None of the selected files passed complete MIDI validation."
                     )
+
                     if skipped_files:
                         st.dataframe(
                             pd.DataFrame(
@@ -1586,6 +1588,7 @@ if submitted:
                             use_container_width=True,
                             hide_index=True,
                         )
+
                     st.stop()
 
                 metrics_argument = (
@@ -1594,12 +1597,13 @@ if submitted:
                     else selected_metrics
                 )
 
-                results: dict[str, pd.DataFrame] = {}
+                new_results: dict[str, pd.DataFrame] = {}
 
                 if run_whole:
                     analysis_status.write(
                         f"Computing whole-file measures for {len(valid_names)} file(s)."
                     )
+
                     whole_df = parser(
                         source=str(midi_folder),
                         metrics=metrics_argument,
@@ -1609,12 +1613,13 @@ if submitted:
                         lf_key=left_foot_key,
                         rf_key=right_foot_key,
                     )
-                    results["Whole_File_Results"] = whole_df
+                    new_results["Whole_File_Results"] = whole_df
 
                 if run_segments:
                     analysis_status.write(
                         f"Computing {number_of_segments} segment(s) per file."
                     )
+
                     segment_df = parser_segments(
                         source=str(midi_folder),
                         metrics=metrics_argument,
@@ -1630,9 +1635,9 @@ if submitted:
                     if average_segments:
                         segment_df = average_segment_rows(segment_df)
 
-                    results["Segment_Results"] = segment_df
+                    new_results["Segment_Results"] = segment_df
 
-                st.session_state["midipy_results"] = results
+                st.session_state["midipy_results"] = new_results
                 st.session_state["midipy_valid_names"] = valid_names
                 st.session_state["midipy_skipped_files"] = skipped_files
                 st.session_state[
@@ -1641,9 +1646,7 @@ if submitted:
                 st.session_state[
                     "midipy_analysis_settings_signature"
                 ] = current_settings_signature
-                st.session_state[
-                    "midipy_last_settings"
-                ] = current_settings
+                st.session_state["midipy_last_settings"] = current_settings
 
                 analysis_status.update(
                     label=(
@@ -1653,6 +1656,8 @@ if submitted:
                     expanded=False,
                 )
 
+            st.rerun()
+
         except Exception as error:
             clear_analysis_state()
             analysis_status.update(
@@ -1660,122 +1665,151 @@ if submitted:
                 state="error",
                 expanded=True,
             )
+
             st.error(
-                "MidiPy encountered a problem while processing the files. "
-                "Review the guidance below and try again."
+                "MidiPy encountered a problem while processing the files."
             )
+
             st.markdown(
                 """
                 - Confirm that the files are genuine Standard MIDI files.
                 - Remove empty or damaged files.
-                - Confirm that the UE, LF, and RF mappings contain values from 0 to 127.
+                - Confirm that all mappings use values from 0 to 127.
                 """
             )
+
             with st.expander("Technical details for support"):
                 st.code(str(error))
 
 
-# =============================================================================
-# STEP 4: REVIEW RESULTS
-# =============================================================================
-
 results = st.session_state.get("midipy_results")
-stored_upload_signature = st.session_state.get(
-    "midipy_analysis_signature"
-)
-stored_settings_signature = st.session_state.get(
-    "midipy_analysis_settings_signature"
-)
-
 results_are_current = (
     bool(results)
-    and stored_upload_signature == current_upload_signature
-    and stored_settings_signature == current_settings_signature
+    and st.session_state.get("midipy_analysis_signature")
+        == current_upload_signature
+    and st.session_state.get("midipy_analysis_settings_signature")
+        == current_settings_signature
 )
 
-if results and not results_are_current:
-    st.warning(
-        "The files or settings have changed since the displayed results were created. "
-        "Run the analysis again to refresh the results."
-    )
-
 if results and results_are_current:
-    valid_names = st.session_state.get(
-        "midipy_valid_names",
-        [],
-    )
-    skipped_files = st.session_state.get(
-        "midipy_skipped_files",
-        [],
-    )
+    valid_names = st.session_state.get("midipy_valid_names", [])
+    skipped_files = st.session_state.get("midipy_skipped_files", [])
 
     st.markdown(
         """
-        <div class="mp-section-heading">
-            <h2>4. Review and export results</h2>
-            <p>Start with the overview, then inspect detailed tables and charts.</p>
+        <div class="mp-section-head">
+            <h2>4. Review results</h2>
+            <p>Review the overview first, then inspect detailed tables and file quality.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    excel_bytes = dataframe_to_excel_bytes(results)
+    csv_zip_bytes = dataframes_to_csv_zip(results)
+
+    completion_column, excel_column, csv_column = st.columns(
+        [5, 1.55, 1.55],
+        vertical_alignment="center",
+    )
+
+    with completion_column:
+        skipped_text = (
+            f" · {len(skipped_files)} skipped"
+            if skipped_files
+            else ""
+        )
+        st.markdown(
+            f"""
+            <div class="mp-completion">
+                <strong>✓ Analysis completed</strong><br>
+                {len(valid_names)} file(s) processed{skipped_text}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with excel_column:
+        st.download_button(
+            "Download Excel",
+            data=excel_bytes,
+            file_name="MidiPy_Results.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            use_container_width=True,
+        )
+
+    with csv_column:
+        st.download_button(
+            "Download CSV",
+            data=csv_zip_bytes,
+            file_name="MidiPy_CSV_Results.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )
+
     whole_dataframe = results.get("Whole_File_Results")
+
     if whole_dataframe is not None:
         summary = result_summary(whole_dataframe)
-
         summary_columns = st.columns(5)
+
         summary_columns[0].metric(
             "Files analyzed",
             int(summary["files"] or len(valid_names)),
         )
         summary_columns[1].metric(
             "Total notes",
-            f"{int(summary['total']):,}" if summary["total"] is not None else "—",
+            f"{int(summary['total']):,}"
+            if summary["total"] is not None
+            else "—",
         )
         summary_columns[2].metric(
             "UE notes",
-            f"{int(summary['ue']):,}" if summary["ue"] is not None else "—",
+            f"{int(summary['ue']):,}"
+            if summary["ue"] is not None
+            else "—",
         )
         summary_columns[3].metric(
             "LF notes",
-            f"{int(summary['lf']):,}" if summary["lf"] is not None else "—",
+            f"{int(summary['lf']):,}"
+            if summary["lf"] is not None
+            else "—",
         )
         summary_columns[4].metric(
             "RF notes",
-            f"{int(summary['rf']):,}" if summary["rf"] is not None else "—",
+            f"{int(summary['rf']):,}"
+            if summary["rf"] is not None
+            else "—",
         )
     else:
         summary_columns = st.columns(3)
-        summary_columns[0].metric(
-            "Files analyzed",
-            len(valid_names),
-        )
+        summary_columns[0].metric("Files analyzed", len(valid_names))
         summary_columns[1].metric(
             "Segment rows",
             len(results.get("Segment_Results", [])),
         )
-        summary_columns[2].metric(
-            "Files skipped",
-            len(skipped_files),
-        )
+        summary_columns[2].metric("Files skipped", len(skipped_files))
 
-    overview_tab, data_tab, quality_tab, export_tab = st.tabs(
+    overview_tab, tables_tab, quality_tab = st.tabs(
         [
             "Overview",
-            "Detailed data",
+            "Detailed tables",
             "File quality",
-            "Export",
         ]
     )
 
     with overview_tab:
-        st.subheader("Visual overview")
-
         result_options = list(results.keys())
-        selected_result_name = st.radio(
+
+        selected_result_name = st.segmented_control(
             "Result set",
             options=result_options,
-            horizontal=True,
+            default=result_options[0],
+            selection_mode="single",
+            required=True,
             format_func=lambda name: (
                 "Whole-file results"
                 if name == "Whole_File_Results"
@@ -1790,13 +1824,11 @@ if results and results_are_current:
         )
 
         st.caption(
-            "Velocity and asynchrony charts use the mean value shown before "
-            "the standard deviation in parentheses."
+            "Velocity and asynchrony charts use the mean shown before "
+            "the standard deviation."
         )
 
-    with data_tab:
-        st.subheader("Result tables")
-
+    with tables_tab:
         for result_name, dataframe in results.items():
             label = (
                 "Whole-file results"
@@ -1810,24 +1842,20 @@ if results and results_are_current:
             ):
                 display_dataframe(dataframe)
                 st.caption(
-                    f"{len(dataframe):,} row(s) × {len(dataframe.columns):,} column(s)"
+                    f"{len(dataframe):,} row(s) × "
+                    f"{len(dataframe.columns):,} column(s)"
                 )
 
     with quality_tab:
-        st.subheader("Processing record")
-
         quality_left, quality_right = st.columns(2)
 
         with quality_left:
             st.markdown("**Successfully analyzed**")
-            if valid_names:
-                for filename in valid_names:
-                    st.write(f"✓ {filename}")
-            else:
-                st.write("No files were recorded.")
+            for filename in valid_names:
+                st.write(f"✓ {filename}")
 
         with quality_right:
-            st.markdown("**Skipped during complete validation**")
+            st.markdown("**Skipped during validation**")
             if skipped_files:
                 st.dataframe(
                     pd.DataFrame(
@@ -1841,93 +1869,14 @@ if results and results_are_current:
                 st.write("✓ No files were skipped.")
 
         st.info(
-            "Files are copied into a temporary workspace for analysis. "
-            "The temporary workspace is removed after processing."
+            "The temporary analysis workspace is removed after processing."
         )
-
-    with export_tab:
-        st.subheader("Download the completed analysis")
-        st.write(
-            "Choose Excel for a formatted workbook or CSV for use in other software."
-        )
-
-        excel_bytes = dataframe_to_excel_bytes(results)
-        csv_zip_bytes = dataframes_to_csv_zip(results)
-
-        export_left, export_right = st.columns(2)
-
-        with export_left:
-            with st.container(border=True):
-                st.markdown("### Excel workbook")
-                st.caption(
-                    "Formatted headings, frozen header rows, filters, and adjusted column widths."
-                )
-                st.download_button(
-                    "Download Excel results",
-                    data=excel_bytes,
-                    file_name="MidiPy_Results.xlsx",
-                    mime=(
-                        "application/vnd.openxmlformats-officedocument."
-                        "spreadsheetml.sheet"
-                    ),
-                    use_container_width=True,
-                )
-
-        with export_right:
-            with st.container(border=True):
-                st.markdown("### CSV package")
-                st.caption(
-                    "A ZIP file containing a separate CSV file for each result table."
-                )
-                st.download_button(
-                    "Download CSV results",
-                    data=csv_zip_bytes,
-                    file_name="MidiPy_CSV_Results.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                )
-
-        st.caption(
-            "Downloaded files use descriptive column names while preserving the original values."
-        )
-
-elif not results:
-    st.markdown(
-        """
-        <div class="mp-section-heading">
-            <h2>3. Run the analysis</h2>
-            <p>After files and settings are ready, use the Analyze MIDI files button above.</p>
-        </div>
-        <div class="mp-callout">
-            Results will appear here as soon as processing is complete. The dashboard
-            will provide summary cards, interactive charts, detailed tables, a file-quality
-            record, and Excel/CSV downloads.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-if results and results_are_current:
-    st.divider()
-    reset_message, reset_button = st.columns([4, 1])
-    with reset_message:
-        st.caption(
-            "Finished with this set of files? Start a clean analysis without refreshing the browser."
-        )
-    with reset_button:
-        if st.button(
-            "↻ Start another analysis",
-            use_container_width=True,
-            key=f"new_analysis_bottom_{analysis_cycle}",
-        ):
-            start_new_analysis()
 
 
 st.markdown(
     """
     <div class="mp-footer">
-        MidiPy Analysis Studio · Designed for clear, guided, and error-tolerant MIDI analysis
+        MidiPy Analysis Studio · Guided, accessible, and error-tolerant MIDI analysis
     </div>
     """,
     unsafe_allow_html=True,
