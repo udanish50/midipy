@@ -103,6 +103,14 @@ COUNT_METRICS = [
 ]
 
 
+# A new cycle creates fresh widget keys so "Start new analysis" truly resets
+# uploaded files, mappings, analysis choices, and displayed results.
+if "analysis_cycle" not in st.session_state:
+    st.session_state["analysis_cycle"] = 0
+
+analysis_cycle = int(st.session_state["analysis_cycle"])
+
+
 # =============================================================================
 # VISUAL SYSTEM
 # =============================================================================
@@ -437,6 +445,130 @@ st.markdown(
             transition-duration: 0.01ms !important;
         }
     }
+    
+    /* ================================================================
+       FORCED LIGHT VISUAL SYSTEM
+       The app stays light even when the browser or operating system is
+       using dark mode. Streamlit's official theme is also set in
+       .streamlit/config.toml.
+       ================================================================ */
+
+    html,
+    body,
+    [data-testid="stAppViewContainer"],
+    .stApp {
+        color-scheme: light !important;
+        background: #f6f8fc !important;
+        color: #172033 !important;
+    }
+
+    [data-testid="stHeader"] {
+        background: rgba(246, 248, 252, 0.94) !important;
+        border-bottom: 1px solid #e4e9f2;
+        backdrop-filter: blur(12px);
+    }
+
+    [data-testid="stSidebar"] {
+        background: #ffffff !important;
+        color: #172033 !important;
+        border-right: 1px solid #e4e9f2 !important;
+    }
+
+    [data-testid="stSidebarContent"],
+    [data-testid="stSidebarContent"] p,
+    [data-testid="stSidebarContent"] label {
+        color: #172033 !important;
+    }
+
+    .mp-hero {
+        border: 1px solid #dce4f4 !important;
+        background:
+            radial-gradient(circle at 92% 12%, rgba(54, 89, 227, 0.13), transparent 18rem),
+            radial-gradient(circle at 8% 88%, rgba(17, 168, 160, 0.11), transparent 17rem),
+            linear-gradient(135deg, #ffffff 0%, #f0f4ff 58%, #eefbf9 100%) !important;
+        box-shadow: 0 16px 38px rgba(38, 57, 112, 0.10) !important;
+        color: #172033 !important;
+    }
+
+    .mp-hero::after {
+        background: rgba(54, 89, 227, 0.055) !important;
+    }
+
+    .mp-eyebrow {
+        color: #2948bd !important;
+        background: #eaf0ff !important;
+        border-color: #d2ddff !important;
+    }
+
+    .mp-hero h1 {
+        color: #172033 !important;
+    }
+
+    .mp-hero p {
+        color: #4e5c75 !important;
+    }
+
+    .mp-step,
+    .mp-status-card,
+    [data-testid="stMetric"],
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background: #ffffff !important;
+        border-color: #e1e7f0 !important;
+        color: #172033 !important;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        box-shadow: 0 10px 28px rgba(40, 56, 98, 0.065) !important;
+    }
+
+    div[data-testid="stFileUploaderDropzone"] {
+        background: #f8faff !important;
+        border-color: #aebeea !important;
+    }
+
+    div[data-testid="stFileUploaderDropzone"]:hover {
+        background: #f0f4ff !important;
+        border-color: #3659e3 !important;
+    }
+
+    input,
+    textarea,
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"] > div {
+        background: #ffffff !important;
+        color: #172033 !important;
+    }
+
+    [data-baseweb="tab-list"] {
+        background: #edf1f7 !important;
+    }
+
+    [aria-selected="true"][data-baseweb="tab"] {
+        background: #ffffff !important;
+        color: #172033 !important;
+    }
+
+    [data-testid="stDataFrame"],
+    [data-testid="stTable"] {
+        background: #ffffff !important;
+    }
+
+    .mp-callout {
+        background: #edf3ff !important;
+        border-color: #cddaff !important;
+        color: #243454 !important;
+    }
+
+    .mp-muted,
+    .mp-section-heading p,
+    .mp-footer {
+        color: #5b6880 !important;
+    }
+
+    .mp-new-analysis-row {
+        margin: -0.2rem 0 0.8rem;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -828,6 +960,12 @@ def render_result_chart(
     dataframe: pd.DataFrame,
     result_name: str,
 ) -> None:
+    """Render charts with an explicit Vega-Lite specification.
+
+    The explicit long-form data and fixed field names avoid Altair schema
+    errors that can occur when st.line_chart or st.bar_chart infer fields from
+    pivoted DataFrames, especially with Altair 6.
+    """
     available = [
         metric
         for metric in AVAILABLE_METRICS
@@ -850,7 +988,10 @@ def render_result_chart(
         index=available.index(default_metric),
         format_func=lambda metric: METRIC_LABELS.get(metric, metric),
         key=f"chart_metric_{result_name}",
-        help="The chart uses the mean value when a table cell contains mean and standard deviation.",
+        help=(
+            "The chart uses the mean value when a table cell contains "
+            "a mean and standard deviation."
+        ),
     )
 
     chart_df = chartable_dataframe(dataframe)
@@ -863,36 +1004,171 @@ def render_result_chart(
         st.info("The selected metric has no chartable values.")
         return
 
-    if result_name == "Segment_Results":
-        chart_df["Segment"] = pd.to_numeric(
-            chart_df["Name"]
-            .astype(str)
-            .str.extract(r"Segment\s+(\d+)", expand=False),
-            errors="coerce",
-        )
-        chart_df["Session"] = (
-            chart_df["Name"]
-            .astype(str)
-            .str.replace(
-                r"\s*Segment\s+\d+\s*$",
-                "",
-                regex=True,
+    metric_title = METRIC_LABELS.get(selected_metric, selected_metric)
+
+    try:
+        if result_name == "Segment_Results":
+            chart_df["Segment"] = pd.to_numeric(
+                chart_df["Name"]
+                .astype(str)
+                .str.extract(r"Segment\s+(\d+)", expand=False),
+                errors="coerce",
+            )
+            chart_df["Session"] = (
+                chart_df["Name"]
+                .astype(str)
+                .str.replace(
+                    r"\s*Segment\s+\d+\s*$",
+                    "",
+                    regex=True,
+                )
+                .str.strip()
+            )
+
+            # Averaged segment output is named only "Segment 1", etc.,
+            # which leaves an empty session label after removing the suffix.
+            chart_df.loc[
+                chart_df["Session"].eq(""),
+                "Session",
+            ] = "Average"
+
+            segment_chart = (
+                chart_df[["Segment", "Session", selected_metric]]
+                .dropna(subset=["Segment", selected_metric])
+                .rename(columns={selected_metric: "Value"})
+            )
+            segment_chart["Segment"] = segment_chart["Segment"].astype(int)
+            segment_chart["Session"] = segment_chart["Session"].astype(str)
+            segment_chart["Value"] = pd.to_numeric(
+                segment_chart["Value"],
+                errors="coerce",
+            )
+            segment_chart = segment_chart.dropna(subset=["Value"])
+
+            if not segment_chart.empty:
+                st.vega_lite_chart(
+                    segment_chart,
+                    {
+                        "mark": {
+                            "type": "line",
+                            "point": True,
+                            "tooltip": True,
+                        },
+                        "encoding": {
+                            "x": {
+                                "field": "Segment",
+                                "type": "quantitative",
+                                "title": "Segment",
+                                "axis": {"tickMinStep": 1},
+                            },
+                            "y": {
+                                "field": "Value",
+                                "type": "quantitative",
+                                "title": metric_title,
+                                "scale": {"zero": False},
+                            },
+                            "color": {
+                                "field": "Session",
+                                "type": "nominal",
+                                "title": "Session",
+                            },
+                            "tooltip": [
+                                {
+                                    "field": "Session",
+                                    "type": "nominal",
+                                    "title": "Session",
+                                },
+                                {
+                                    "field": "Segment",
+                                    "type": "quantitative",
+                                    "title": "Segment",
+                                },
+                                {
+                                    "field": "Value",
+                                    "type": "quantitative",
+                                    "title": metric_title,
+                                },
+                            ],
+                        },
+                    },
+                    width="stretch",
+                    height=420,
+                    key=f"segment_vega_{result_name}_{selected_metric}",
+                )
+                return
+
+        whole_chart = (
+            chart_df[["Name", selected_metric]]
+            .rename(
+                columns={
+                    "Name": "Session",
+                    selected_metric: "Value",
+                }
             )
         )
+        whole_chart["Session"] = whole_chart["Session"].astype(str)
+        whole_chart["Value"] = pd.to_numeric(
+            whole_chart["Value"],
+            errors="coerce",
+        )
+        whole_chart = whole_chart.dropna(subset=["Value"])
 
-        if chart_df["Segment"].notna().all():
-            pivot = chart_df.pivot_table(
-                index="Segment",
-                columns="Session",
-                values=selected_metric,
-                aggfunc="mean",
-            ).sort_index()
-            st.line_chart(pivot)
+        if whole_chart.empty:
+            st.info("The selected metric has no chartable numeric values.")
             return
 
-    simple_chart = chart_df[["Name", selected_metric]].set_index("Name")
-    st.bar_chart(simple_chart)
+        st.vega_lite_chart(
+            whole_chart,
+            {
+                "mark": {
+                    "type": "bar",
+                    "cornerRadiusTopLeft": 5,
+                    "cornerRadiusTopRight": 5,
+                    "tooltip": True,
+                },
+                "encoding": {
+                    "x": {
+                        "field": "Session",
+                        "type": "nominal",
+                        "title": "Session",
+                        "sort": None,
+                        "axis": {
+                            "labelAngle": -35,
+                            "labelLimit": 180,
+                        },
+                    },
+                    "y": {
+                        "field": "Value",
+                        "type": "quantitative",
+                        "title": metric_title,
+                    },
+                    "tooltip": [
+                        {
+                            "field": "Session",
+                            "type": "nominal",
+                            "title": "Session",
+                        },
+                        {
+                            "field": "Value",
+                            "type": "quantitative",
+                            "title": metric_title,
+                        },
+                    ],
+                },
+            },
+            width="stretch",
+            height=420,
+            key=f"whole_vega_{result_name}_{selected_metric}",
+        )
 
+    except Exception as chart_error:
+        # A chart must never stop users from reaching their data or downloads.
+        st.warning(
+            "The visual chart could not be displayed, but the result tables "
+            "and downloads remain available."
+        )
+        with st.expander("Chart diagnostic details"):
+            st.code(str(chart_error))
 
 def clear_analysis_state() -> None:
     for key in [
@@ -904,6 +1180,16 @@ def clear_analysis_state() -> None:
         "midipy_last_settings",
     ]:
         st.session_state.pop(key, None)
+
+
+
+def start_new_analysis() -> None:
+    """Reset results, uploaded files, and all configurable controls."""
+    clear_analysis_state()
+    st.session_state["analysis_cycle"] = (
+        int(st.session_state.get("analysis_cycle", 0)) + 1
+    )
+    st.rerun()
 
 
 # =============================================================================
@@ -946,12 +1232,12 @@ with st.sidebar:
     )
 
     if st.button(
-        "Start a new analysis",
+        "↻ Start new analysis",
         use_container_width=True,
-        help="Clears displayed results and returns the dashboard to a fresh state.",
+        help="Removes the current uploads and results and restores the default settings.",
+        key=f"new_analysis_sidebar_{analysis_cycle}",
     ):
-        clear_analysis_state()
-        st.rerun()
+        start_new_analysis()
 
 
 # =============================================================================
@@ -991,6 +1277,16 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+new_action_space, new_action_button = st.columns([4, 1])
+with new_action_button:
+    if st.button(
+        "↻ Start new analysis",
+        use_container_width=True,
+        help="Clear uploaded files, results, and settings and begin again.",
+        key=f"new_analysis_main_{analysis_cycle}",
+    ):
+        start_new_analysis()
+
 
 # =============================================================================
 # STEP 1: UPLOAD
@@ -1012,6 +1308,7 @@ with st.container(border=True):
         type=["mid", "midi"],
         accept_multiple_files=True,
         help="Supported extensions: .mid and .midi. Multiple files can be selected together.",
+        key=f"midi_upload_{analysis_cycle}",
     )
 
     precheck_rows, ready_count, total_size = precheck_uploads(uploaded_files)
@@ -1079,6 +1376,7 @@ with st.container(border=True):
             "Separate values with commas, spaces, or semicolons."
         ),
         height=118,
+        key=f"ue_note_values_{analysis_cycle}",
     )
 
     mapping_left, mapping_right = st.columns(2)
@@ -1092,6 +1390,7 @@ with st.container(border=True):
                 value=44,
                 step=1,
                 help="One MIDI note number from 0 to 127.",
+                key=f"left_foot_key_{analysis_cycle}",
             )
         )
 
@@ -1104,6 +1403,7 @@ with st.container(border=True):
                 value=36,
                 step=1,
                 help="One MIDI note number from 0 to 127.",
+                key=f"right_foot_key_{analysis_cycle}",
             )
         )
 
@@ -1123,6 +1423,7 @@ with st.container(border=True):
             "Whole-file results summarize each complete session. "
             "Segment results show changes across time."
         ),
+        key=f"analysis_mode_{analysis_cycle}",
     )
 
     run_whole = analysis_mode in {
@@ -1145,6 +1446,7 @@ with st.container(border=True):
                 value=5,
                 disabled=not run_segments,
                 help="Each MIDI file is divided into equal-duration segments.",
+                key=f"segment_count_{analysis_cycle}",
             )
         )
 
@@ -1157,6 +1459,7 @@ with st.container(border=True):
                 "For example, all Segment 1 rows are averaged together, "
                 "then all Segment 2 rows, and so on."
             ),
+            key=f"average_segments_{analysis_cycle}",
         )
 
     with st.expander("Advanced result options"):
@@ -1169,6 +1472,7 @@ with st.container(border=True):
             ],
             index=0,
             horizontal=True,
+            key=f"metric_preset_{analysis_cycle}",
         )
 
         if metric_preset == "Complete report":
@@ -1186,6 +1490,7 @@ with st.container(border=True):
                 default=AVAILABLE_METRICS,
                 format_func=lambda metric: METRIC_LABELS.get(metric, metric),
                 help="The session name is included automatically.",
+                key=f"selected_metrics_{analysis_cycle}",
             )
 
     submitted = st.button(
@@ -1193,7 +1498,7 @@ with st.container(border=True):
         type="primary",
         use_container_width=True,
         disabled=not uploaded_files or ready_count == 0,
-        key="analyze_midi_files",
+        key=f"analyze_midi_files_{analysis_cycle}",
     )
 
 
@@ -1476,6 +1781,7 @@ if results and results_are_current:
                 if name == "Whole_File_Results"
                 else "Segment results"
             ),
+            key=f"result_set_{analysis_cycle}",
         )
 
         render_result_chart(
@@ -1600,6 +1906,22 @@ elif not results:
         """,
         unsafe_allow_html=True,
     )
+
+
+if results and results_are_current:
+    st.divider()
+    reset_message, reset_button = st.columns([4, 1])
+    with reset_message:
+        st.caption(
+            "Finished with this set of files? Start a clean analysis without refreshing the browser."
+        )
+    with reset_button:
+        if st.button(
+            "↻ Start another analysis",
+            use_container_width=True,
+            key=f"new_analysis_bottom_{analysis_cycle}",
+        ):
+            start_new_analysis()
 
 
 st.markdown(
