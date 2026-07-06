@@ -103,6 +103,28 @@ COUNT_METRICS = [
 ]
 
 
+FOOT_METRICS = [
+    "LF_Counts",
+    "RF_Counts",
+    "LF_Velocity",
+    "RF_Velocity",
+    "LF_Async",
+    "RF_Async",
+]
+
+NON_FOOT_METRICS = [
+    metric
+    for metric in AVAILABLE_METRICS
+    if metric not in FOOT_METRICS
+]
+
+NON_FOOT_COUNT_METRICS = [
+    metric
+    for metric in COUNT_METRICS
+    if metric not in {"LF_Counts", "RF_Counts"}
+]
+
+
 # A new cycle creates fresh widget keys so "Start new analysis" truly resets
 # uploaded files, mappings, analysis choices, and displayed results.
 if "analysis_cycle" not in st.session_state:
@@ -1301,7 +1323,8 @@ def format_file_status_table(precheck_rows: list[dict[str, Any]]) -> pd.DataFram
     return pd.DataFrame(rows)
 
 
-def selected_custom_metrics() -> list[str]:
+def selected_custom_metrics(include_feet: bool) -> list[str]:
+    """Show only metrics that are meaningful for the selected instrument."""
     selected: list[str] = []
     group_columns = st.columns(3)
 
@@ -1309,9 +1332,16 @@ def selected_custom_metrics() -> list[str]:
         group_columns,
         METRIC_GROUPS.items(),
     ):
+        visible_metrics = [
+            metric
+            for metric in metrics
+            if include_feet or metric not in FOOT_METRICS
+        ]
+
         with column:
             st.markdown(f"**{group_name}**")
-            for metric in metrics:
+
+            for metric in visible_metrics:
                 checked = st.checkbox(
                     METRIC_LABELS[metric],
                     value=True,
@@ -1472,13 +1502,26 @@ with mapping_column:
     with st.container(border=True):
         st.markdown(
             """
-            <h3 class="mp-card-heading">Body-part mapping</h3>
+            <h3 class="mp-card-heading">Instrument and note mapping</h3>
             <p class="mp-card-copy">
-                Select MIDI note numbers rather than editing an encoded text list.
+                Foot mappings are needed for drum-set analysis but are optional
+                for guitar and other instruments.
             </p>
             """,
             unsafe_allow_html=True,
         )
+
+        instrument_mode = st.radio(
+            "Instrument setup",
+            options=[
+                "Drum set",
+                "Guitar or other instrument",
+            ],
+            index=0,
+            key=f"instrument_mode_{analysis_cycle}",
+        )
+
+        include_feet = instrument_mode == "Drum set"
 
         ue_keys = st.multiselect(
             "Upper-extremity notes",
@@ -1490,56 +1533,73 @@ with mapping_column:
         )
         st.caption(f"{len(ue_keys)} upper-extremity note(s) selected")
 
-        foot_left, foot_right = st.columns(2)
-        with foot_left:
-            left_foot_key = int(
-                st.number_input(
-                    "Left foot",
-                    min_value=0,
-                    max_value=127,
-                    value=44,
-                    step=1,
-                    key=f"left_foot_key_{analysis_cycle}",
+        if include_feet:
+            foot_left, foot_right = st.columns(2)
+
+            with foot_left:
+                left_foot_key = int(
+                    st.number_input(
+                        "Left foot",
+                        min_value=0,
+                        max_value=127,
+                        value=44,
+                        step=1,
+                        key=f"left_foot_key_{analysis_cycle}",
+                    )
                 )
-            )
 
-        with foot_right:
-            right_foot_key = int(
-                st.number_input(
-                    "Right foot",
-                    min_value=0,
-                    max_value=127,
-                    value=36,
-                    step=1,
-                    key=f"right_foot_key_{analysis_cycle}",
+            with foot_right:
+                right_foot_key = int(
+                    st.number_input(
+                        "Right foot",
+                        min_value=0,
+                        max_value=127,
+                        value=36,
+                        step=1,
+                        key=f"right_foot_key_{analysis_cycle}",
+                    )
                 )
-            )
 
-        mapping_conflicts: list[str] = []
-        if left_foot_key in ue_keys:
-            mapping_conflicts.append(
-                f"Note {left_foot_key} is assigned to both UE and left foot."
-            )
-        if right_foot_key in ue_keys:
-            mapping_conflicts.append(
-                f"Note {right_foot_key} is assigned to both UE and right foot."
-            )
-        if left_foot_key == right_foot_key:
-            mapping_conflicts.append(
-                f"Note {left_foot_key} is assigned to both feet."
-            )
+            mapping_conflicts: list[str] = []
 
-        if mapping_conflicts:
-            st.markdown(
-                '<div class="mp-inline-warning">⚠ '
-                + "<br>⚠ ".join(mapping_conflicts)
-                + "</div>",
-                unsafe_allow_html=True,
-            )
+            if left_foot_key in ue_keys:
+                mapping_conflicts.append(
+                    f"Note {left_foot_key} is assigned to both UE and left foot."
+                )
+
+            if right_foot_key in ue_keys:
+                mapping_conflicts.append(
+                    f"Note {right_foot_key} is assigned to both UE and right foot."
+                )
+
+            if left_foot_key == right_foot_key:
+                mapping_conflicts.append(
+                    f"Note {left_foot_key} is assigned to both feet."
+                )
+
+            if mapping_conflicts:
+                st.markdown(
+                    '<div class="mp-inline-warning">⚠ '
+                    + "<br>⚠ ".join(mapping_conflicts)
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="mp-inline-ok">✓ No mapping conflicts detected.</div>',
+                    unsafe_allow_html=True,
+                )
+
         else:
-            st.markdown(
-                '<div class="mp-inline-ok">✓ No mapping conflicts detected.</div>',
-                unsafe_allow_html=True,
+            # MidiPy's function signature still accepts LF/RF parameters.
+            # They are retained internally, but all foot-related metrics are
+            # removed from the requested output for non-drum instruments.
+            left_foot_key = 44
+            right_foot_key = 36
+
+            st.info(
+                "Foot mappings and LF/RF result columns are disabled for this "
+                "instrument. Only non-foot measures will be calculated and shown."
             )
 
 with scope_column:
@@ -1630,19 +1690,48 @@ with st.container(border=True):
         label_visibility="collapsed",
     )
 
+    available_for_instrument = (
+        AVAILABLE_METRICS
+        if include_feet
+        else NON_FOOT_METRICS
+    )
+
     if result_preset == "Complete report":
-        selected_metrics = AVAILABLE_METRICS.copy()
-        st.caption(
-            "12 measures selected · note counts, velocity, and asynchrony"
-        )
+        selected_metrics = available_for_instrument.copy()
+
+        if include_feet:
+            st.caption(
+                "12 measures selected · note counts, velocity, and asynchrony"
+            )
+        else:
+            st.caption(
+                "6 non-foot measures selected · counts, velocity, and asynchrony"
+            )
+
     elif result_preset == "Counts only":
-        selected_metrics = COUNT_METRICS.copy()
-        st.caption("4 measures selected · total, UE, LF, and RF note counts")
+        selected_metrics = (
+            COUNT_METRICS.copy()
+            if include_feet
+            else NON_FOOT_COUNT_METRICS.copy()
+        )
+
+        if include_feet:
+            st.caption(
+                "4 measures selected · total, UE, LF, and RF note counts"
+            )
+        else:
+            st.caption(
+                "2 non-foot measures selected · total and UE note counts"
+            )
+
     else:
         st.divider()
-        selected_metrics = selected_custom_metrics()
+        selected_metrics = selected_custom_metrics(
+            include_feet=include_feet
+        )
         st.caption(
-            f"{len(selected_metrics)} of {len(AVAILABLE_METRICS)} measures selected"
+            f"{len(selected_metrics)} of "
+            f"{len(available_for_instrument)} available measures selected"
         )
 
 
@@ -1651,9 +1740,11 @@ with st.container(border=True):
 # =============================================================================
 
 current_settings = {
+    "instrument_mode": instrument_mode,
+    "include_feet": include_feet,
     "ue_keys": ue_keys,
-    "left_foot_key": left_foot_key,
-    "right_foot_key": right_foot_key,
+    "left_foot_key": left_foot_key if include_feet else None,
+    "right_foot_key": right_foot_key if include_feet else None,
     "analysis_mode": analysis_mode,
     "number_of_segments": number_of_segments,
     "average_segments": average_segments,
@@ -1767,7 +1858,10 @@ if submitted:
 
                 metrics_argument = (
                     ["all"]
-                    if set(selected_metrics) == set(AVAILABLE_METRICS)
+                    if (
+                        include_feet
+                        and set(selected_metrics) == set(AVAILABLE_METRICS)
+                    )
                     else selected_metrics
                 )
 
@@ -1931,27 +2025,56 @@ if results and results_are_current:
     whole_dataframe = results.get("Whole_File_Results")
     if whole_dataframe is not None:
         summary = result_summary(whole_dataframe)
-        summary_columns = st.columns(5)
-        summary_columns[0].metric(
-            "Files analyzed",
-            int(summary["files"] or len(valid_names)),
-        )
-        summary_columns[1].metric(
-            "Total notes",
-            f"{int(summary['total']):,}" if summary["total"] is not None else "—",
-        )
-        summary_columns[2].metric(
-            "UE notes",
-            f"{int(summary['ue']):,}" if summary["ue"] is not None else "—",
-        )
-        summary_columns[3].metric(
-            "LF notes",
-            f"{int(summary['lf']):,}" if summary["lf"] is not None else "—",
-        )
-        summary_columns[4].metric(
-            "RF notes",
-            f"{int(summary['rf']):,}" if summary["rf"] is not None else "—",
-        )
+
+        if include_feet:
+            summary_columns = st.columns(5)
+            summary_columns[0].metric(
+                "Files analyzed",
+                int(summary["files"] or len(valid_names)),
+            )
+            summary_columns[1].metric(
+                "Total notes",
+                f"{int(summary['total']):,}"
+                if summary["total"] is not None
+                else "—",
+            )
+            summary_columns[2].metric(
+                "UE notes",
+                f"{int(summary['ue']):,}"
+                if summary["ue"] is not None
+                else "—",
+            )
+            summary_columns[3].metric(
+                "LF notes",
+                f"{int(summary['lf']):,}"
+                if summary["lf"] is not None
+                else "—",
+            )
+            summary_columns[4].metric(
+                "RF notes",
+                f"{int(summary['rf']):,}"
+                if summary["rf"] is not None
+                else "—",
+            )
+
+        else:
+            summary_columns = st.columns(3)
+            summary_columns[0].metric(
+                "Files analyzed",
+                int(summary["files"] or len(valid_names)),
+            )
+            summary_columns[1].metric(
+                "Total notes",
+                f"{int(summary['total']):,}"
+                if summary["total"] is not None
+                else "—",
+            )
+            summary_columns[2].metric(
+                "UE notes",
+                f"{int(summary['ue']):,}"
+                if summary["ue"] is not None
+                else "—",
+            )
     else:
         summary_columns = st.columns(3)
         summary_columns[0].metric("Files analyzed", len(valid_names))
