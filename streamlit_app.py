@@ -1466,8 +1466,11 @@ def format_file_status_table(
     return pd.DataFrame(rows)
 
 
-def selected_custom_metrics(include_feet: bool) -> list[str]:
-    """Show only measures relevant to the selected instrument."""
+def selected_custom_metrics(
+    include_feet: bool,
+    key_prefix: str = "single",
+) -> list[str]:
+    """Show only measures relevant to one performer's instrument."""
     selected: list[str] = []
     group_columns = st.columns(3)
 
@@ -1489,7 +1492,10 @@ def selected_custom_metrics(include_feet: bool) -> list[str]:
                     METRIC_LABELS[metric],
                     value=True,
                     help=METRIC_HELP.get(metric),
-                    key=f"metric_{metric}_{analysis_cycle}",
+                    key=(
+                        f"{key_prefix}_metric_{metric}_"
+                        f"{analysis_cycle}"
+                    ),
                 )
 
                 if checked:
@@ -1610,30 +1616,58 @@ def aggregate_metric_value(
     return float(values.mean()) if not values.empty else None
 
 
-def primary_result_dataframe(
-    dataset_results: dict[str, pd.DataFrame],
-) -> pd.DataFrame | None:
-    """Prefer whole-file results; otherwise use segment results."""
-    if "Whole_File_Results" in dataset_results:
-        return dataset_results["Whole_File_Results"]
+def common_result_dataframes(
+    therapist_results: dict[str, pd.DataFrame],
+    participant_results: dict[str, pd.DataFrame],
+) -> tuple[
+    pd.DataFrame | None,
+    pd.DataFrame | None,
+    str | None,
+]:
+    """Return the same analysis level for both performers."""
+    if (
+        "Whole_File_Results" in therapist_results
+        and "Whole_File_Results" in participant_results
+    ):
+        return (
+            therapist_results["Whole_File_Results"],
+            participant_results["Whole_File_Results"],
+            "Whole-file results",
+        )
 
-    return dataset_results.get("Segment_Results")
+    if (
+        "Segment_Results" in therapist_results
+        and "Segment_Results" in participant_results
+    ):
+        return (
+            therapist_results["Segment_Results"],
+            participant_results["Segment_Results"],
+            "Segment results",
+        )
+
+    return None, None, None
 
 
 def build_comparison_summary(
     therapist_results: dict[str, pd.DataFrame],
     participant_results: dict[str, pd.DataFrame],
-    selected_metrics: list[str],
+    shared_metrics: list[str],
 ) -> pd.DataFrame:
-    therapist_df = primary_result_dataframe(therapist_results)
-    participant_df = primary_result_dataframe(participant_results)
+    (
+        therapist_df,
+        participant_df,
+        _,
+    ) = common_result_dataframes(
+        therapist_results,
+        participant_results,
+    )
 
     if therapist_df is None or participant_df is None:
         return pd.DataFrame()
 
     rows: list[dict[str, Any]] = []
 
-    for metric in selected_metrics:
+    for metric in shared_metrics:
         therapist_value = aggregate_metric_value(
             therapist_df,
             metric,
@@ -2094,6 +2128,324 @@ def render_dataset_details(
                 st.write("✓ No files were skipped.")
 
 
+
+def render_performer_configuration(
+    *,
+    role: str,
+    key_prefix: str,
+) -> dict[str, Any]:
+    """Render a complete, independent configuration for one performer."""
+    badge_class = (
+        "therapist"
+        if role == ROLE_THERAPIST
+        else "participant"
+    )
+    badge_text = "MT" if role == ROLE_THERAPIST else "P"
+
+    st.markdown(
+        f"""
+        <div class="mp-role-heading">
+            <span class="mp-role-badge {badge_class}">
+                {badge_text}
+            </span>
+            <span class="mp-role-title">{role} configuration</span>
+        </div>
+        <p class="mp-role-copy">
+            These settings apply only to the {role.lower()} dataset.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.container(border=True):
+        st.markdown(
+            """
+            <h3 class="mp-card-heading">Instrument and note mapping</h3>
+            <p class="mp-card-copy">
+                Select the instrument and MIDI mappings used by this performer.
+            </p>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        instrument_mode = st.radio(
+            "Instrument setup",
+            options=[
+                "Drum set",
+                "Guitar or other instrument",
+            ],
+            index=0,
+            key=f"{key_prefix}_instrument_{analysis_cycle}",
+        )
+
+        include_feet = instrument_mode == "Drum set"
+
+        ue_keys = st.multiselect(
+            "Upper-extremity notes",
+            options=list(range(128)),
+            default=DEFAULT_UE_KEYS,
+            placeholder="Search or add a MIDI note number",
+            help=(
+                "Choose the note numbers assigned to this "
+                "performer's upper extremities."
+            ),
+            key=f"{key_prefix}_ue_notes_{analysis_cycle}",
+        )
+
+        st.caption(
+            f"{len(ue_keys)} upper-extremity note(s) selected"
+        )
+
+        if include_feet:
+            foot_left, foot_right = st.columns(2)
+
+            with foot_left:
+                left_foot_key = int(
+                    st.number_input(
+                        "Left foot",
+                        min_value=0,
+                        max_value=127,
+                        value=44,
+                        step=1,
+                        key=(
+                            f"{key_prefix}_left_foot_"
+                            f"{analysis_cycle}"
+                        ),
+                    )
+                )
+
+            with foot_right:
+                right_foot_key = int(
+                    st.number_input(
+                        "Right foot",
+                        min_value=0,
+                        max_value=127,
+                        value=36,
+                        step=1,
+                        key=(
+                            f"{key_prefix}_right_foot_"
+                            f"{analysis_cycle}"
+                        ),
+                    )
+                )
+
+            mapping_conflicts: list[str] = []
+
+            if left_foot_key in ue_keys:
+                mapping_conflicts.append(
+                    f"Note {left_foot_key} is assigned to both "
+                    "upper extremity and left foot."
+                )
+
+            if right_foot_key in ue_keys:
+                mapping_conflicts.append(
+                    f"Note {right_foot_key} is assigned to both "
+                    "upper extremity and right foot."
+                )
+
+            if left_foot_key == right_foot_key:
+                mapping_conflicts.append(
+                    f"Note {left_foot_key} is assigned to both feet."
+                )
+
+            if mapping_conflicts:
+                st.markdown(
+                    '<div class="mp-inline-warning">⚠ '
+                    + "<br>⚠ ".join(mapping_conflicts)
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="mp-inline-ok">'
+                    "✓ No mapping conflicts detected.</div>",
+                    unsafe_allow_html=True,
+                )
+
+        else:
+            # MidiPy still requires these function arguments internally.
+            # Foot-related measures are not requested or displayed.
+            left_foot_key = 44
+            right_foot_key = 36
+
+            st.info(
+                "Foot mappings and LF/RF measures are disabled "
+                "for this performer."
+            )
+
+    with st.container(border=True):
+        st.markdown(
+            """
+            <h3 class="mp-card-heading">Analysis scope</h3>
+            <p class="mp-card-copy">
+                Choose the level of detail for this performer.
+            </p>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        analysis_mode = st.radio(
+            "Choose what to analyze",
+            options=[
+                "Whole files + segments",
+                "Whole files only",
+                "Segments only",
+            ],
+            index=0,
+            key=f"{key_prefix}_scope_{analysis_cycle}",
+            label_visibility="collapsed",
+        )
+
+        run_whole = analysis_mode in {
+            "Whole files + segments",
+            "Whole files only",
+        }
+        run_segments = analysis_mode in {
+            "Whole files + segments",
+            "Segments only",
+        }
+
+        if analysis_mode == "Whole files + segments":
+            st.caption(
+                "Provides session summaries and change over time."
+            )
+        elif analysis_mode == "Whole files only":
+            st.caption(
+                "Provides one summary row per complete MIDI session."
+            )
+        else:
+            st.caption(
+                "Examines changes across sections of each session."
+            )
+
+        if run_segments:
+            with st.container(border=True):
+                st.markdown("**Segment settings**")
+
+                number_of_segments = int(
+                    st.slider(
+                        "Number of segments",
+                        min_value=2,
+                        max_value=20,
+                        value=5,
+                        key=(
+                            f"{key_prefix}_segment_count_"
+                            f"{analysis_cycle}"
+                        ),
+                    )
+                )
+
+                average_segments = st.checkbox(
+                    "Average matching segments across files",
+                    value=False,
+                    help=(
+                        "Combines all Segment 1 rows, all Segment 2 "
+                        "rows, and so on."
+                    ),
+                    key=(
+                        f"{key_prefix}_average_segments_"
+                        f"{analysis_cycle}"
+                    ),
+                )
+        else:
+            number_of_segments = 5
+            average_segments = False
+
+    with st.container(border=True):
+        st.markdown(
+            """
+            <h3 class="mp-card-heading">Results to include</h3>
+            <p class="mp-card-copy">
+                Select the measures required for this performer.
+            </p>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        result_preset = st.radio(
+            "Report detail",
+            options=[
+                "Complete report",
+                "Counts only",
+                "Custom selection",
+            ],
+            index=0,
+            key=f"{key_prefix}_preset_{analysis_cycle}",
+            label_visibility="collapsed",
+        )
+
+        available_for_instrument = (
+            AVAILABLE_METRICS
+            if include_feet
+            else NON_FOOT_METRICS
+        )
+
+        if result_preset == "Complete report":
+            selected_metrics = available_for_instrument.copy()
+
+            if include_feet:
+                st.caption(
+                    "12 measures selected · counts, velocity, "
+                    "and asynchrony"
+                )
+            else:
+                st.caption(
+                    "6 non-foot measures selected · counts, "
+                    "velocity, and asynchrony"
+                )
+
+        elif result_preset == "Counts only":
+            selected_metrics = (
+                COUNT_METRICS.copy()
+                if include_feet
+                else NON_FOOT_COUNT_METRICS.copy()
+            )
+
+            if include_feet:
+                st.caption(
+                    "4 measures selected · total, UE, LF, and RF "
+                    "note counts"
+                )
+            else:
+                st.caption(
+                    "2 non-foot measures selected · total and UE "
+                    "note counts"
+                )
+
+        else:
+            st.divider()
+
+            selected_metrics = selected_custom_metrics(
+                include_feet=include_feet,
+                key_prefix=key_prefix,
+            )
+
+            st.caption(
+                f"{len(selected_metrics)} of "
+                f"{len(available_for_instrument)} available "
+                "measures selected"
+            )
+
+    return {
+        "role": role,
+        "instrument_mode": instrument_mode,
+        "include_feet": include_feet,
+        "ue_keys": ue_keys,
+        "left_foot_key": (
+            left_foot_key if include_feet else None
+        ),
+        "right_foot_key": (
+            right_foot_key if include_feet else None
+        ),
+        "analysis_mode": analysis_mode,
+        "run_whole": run_whole,
+        "run_segments": run_segments,
+        "number_of_segments": number_of_segments,
+        "average_segments": average_segments,
+        "selected_metrics": selected_metrics,
+    }
+
+
 # =============================================================================
 # COMPACT HEADER
 # =============================================================================
@@ -2481,6 +2833,7 @@ if not uploads_ready:
     st.stop()
 
 
+
 # =============================================================================
 # 2. CONFIGURE
 # =============================================================================
@@ -2489,270 +2842,418 @@ st.markdown(
     """
     <h2 class="mp-section-title">2. Configure the analysis</h2>
     <p class="mp-section-copy">
-        Defaults are prepared. Change only what is required for this dataset.
+        Configure each performer according to the instrument, mappings,
+        sessions, and measures used in their own dataset.
     </p>
     """,
     unsafe_allow_html=True,
 )
 
+configs_by_role: dict[str, dict[str, Any]] = {}
+
 if comparison_enabled:
     st.markdown(
         """
         <div class="mp-comparison-callout">
-            These settings apply to both the music therapist and participant.
-            If the performers used different instruments or incompatible note
-            mappings, analyze them separately rather than comparing them directly.
+            The music therapist and participant are configured independently.
+            The comparison will use only the measures and analysis levels
+            available for both performers.
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-mapping_column, scope_column = st.columns(
-    [1.15, 1],
-    gap="large",
-)
+    therapist_settings_tab, participant_settings_tab = st.tabs(
+        [
+            "Music therapist settings",
+            "Participant settings",
+        ]
+    )
 
-with mapping_column:
-    with st.container(border=True):
-        st.markdown(
-            """
-            <h3 class="mp-card-heading">Instrument and note mapping</h3>
-            <p class="mp-card-copy">
-                Foot mappings are used for drum-set analysis and omitted for
-                guitar or other instruments.
-            </p>
-            """,
-            unsafe_allow_html=True,
+    with therapist_settings_tab:
+        configs_by_role[ROLE_THERAPIST] = (
+            render_performer_configuration(
+                role=ROLE_THERAPIST,
+                key_prefix="therapist",
+            )
         )
 
-        instrument_mode = st.radio(
-            "Instrument setup",
-            options=[
-                "Drum set",
-                "Guitar or other instrument",
-            ],
-            index=0,
-            key=f"instrument_mode_{analysis_cycle}",
+    with participant_settings_tab:
+        configs_by_role[ROLE_PARTICIPANT] = (
+            render_performer_configuration(
+                role=ROLE_PARTICIPANT,
+                key_prefix="participant",
+            )
         )
 
-        include_feet = instrument_mode == "Drum set"
+    therapist_config = configs_by_role[ROLE_THERAPIST]
+    participant_config = configs_by_role[ROLE_PARTICIPANT]
 
-        ue_keys = st.multiselect(
-            "Upper-extremity notes",
-            options=list(range(128)),
-            default=DEFAULT_UE_KEYS,
-            placeholder="Search or add a MIDI note number",
-            help=(
-                "Choose all note numbers assigned to the upper extremities."
-            ),
-            key=f"ue_note_values_{analysis_cycle}",
+    shared_metrics = sorted(
+        set(therapist_config["selected_metrics"])
+        & set(participant_config["selected_metrics"]),
+        key=lambda metric: AVAILABLE_METRICS.index(metric),
+    )
+
+    shared_whole_level = (
+        therapist_config["run_whole"]
+        and participant_config["run_whole"]
+    )
+    shared_segment_level = (
+        therapist_config["run_segments"]
+        and participant_config["run_segments"]
+    )
+    shared_analysis_level = (
+        shared_whole_level or shared_segment_level
+    )
+
+    st.markdown("### Comparison compatibility")
+
+    compatibility_left, compatibility_middle, compatibility_right = (
+        st.columns(3)
+    )
+
+    with compatibility_left:
+        st.metric(
+            "Shared measures",
+            len(shared_metrics),
         )
-        st.caption(f"{len(ue_keys)} upper-extremity note(s) selected")
 
-        if include_feet:
-            foot_left, foot_right = st.columns(2)
+    with compatibility_middle:
+        st.metric(
+            "Shared whole-file level",
+            "Available" if shared_whole_level else "Not selected",
+        )
 
-            with foot_left:
-                left_foot_key = int(
-                    st.number_input(
-                        "Left foot",
-                        min_value=0,
-                        max_value=127,
-                        value=44,
-                        step=1,
-                        key=f"left_foot_key_{analysis_cycle}",
-                    )
-                )
+    with compatibility_right:
+        st.metric(
+            "Shared segment level",
+            "Available" if shared_segment_level else "Not selected",
+        )
 
-            with foot_right:
-                right_foot_key = int(
-                    st.number_input(
-                        "Right foot",
-                        min_value=0,
-                        max_value=127,
-                        value=36,
-                        step=1,
-                        key=f"right_foot_key_{analysis_cycle}",
-                    )
-                )
+    if not shared_metrics:
+        st.warning(
+            "Select at least one measure for both performers before "
+            "running the comparison."
+        )
+    elif not shared_analysis_level:
+        st.warning(
+            "Choose at least one common analysis level. For example, "
+            "enable whole-file results or segment results for both "
+            "performers."
+        )
+    else:
+        st.success(
+            f"The comparison is ready with {len(shared_metrics)} "
+            "shared measure(s)."
+        )
 
-            mapping_conflicts: list[str] = []
+    if (
+        shared_segment_level
+        and therapist_config["number_of_segments"]
+        != participant_config["number_of_segments"]
+    ):
+        st.info(
+            "The performers use different segment counts. Their segment "
+            "trajectories will be shown on their own segment scales."
+        )
 
-            if left_foot_key in ue_keys:
-                mapping_conflicts.append(
-                    f"Note {left_foot_key} is assigned to both UE and left foot."
-                )
+else:
+    # Preserve the familiar single-performer configuration layout.
+    mapping_column, scope_column = st.columns(
+        [1.15, 1],
+        gap="large",
+    )
 
-            if right_foot_key in ue_keys:
-                mapping_conflicts.append(
-                    f"Note {right_foot_key} is assigned to both UE and right foot."
-                )
-
-            if left_foot_key == right_foot_key:
-                mapping_conflicts.append(
-                    f"Note {left_foot_key} is assigned to both feet."
-                )
-
-            if mapping_conflicts:
-                st.markdown(
-                    '<div class="mp-inline-warning">⚠ '
-                    + "<br>⚠ ".join(mapping_conflicts)
-                    + "</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    '<div class="mp-inline-ok">'
-                    '✓ No mapping conflicts detected.</div>',
-                    unsafe_allow_html=True,
-                )
-
-        else:
-            left_foot_key = 44
-            right_foot_key = 36
-            st.info(
-                "Foot mappings and LF/RF measures are disabled for this "
-                "instrument."
+    with mapping_column:
+        with st.container(border=True):
+            st.markdown(
+                """
+                <h3 class="mp-card-heading">
+                    Instrument and note mapping
+                </h3>
+                <p class="mp-card-copy">
+                    Foot mappings are used for drum-set analysis and
+                    omitted for guitar or other instruments.
+                </p>
+                """,
+                unsafe_allow_html=True,
             )
 
-with scope_column:
+            instrument_mode = st.radio(
+                "Instrument setup",
+                options=[
+                    "Drum set",
+                    "Guitar or other instrument",
+                ],
+                index=0,
+                key=f"instrument_mode_{analysis_cycle}",
+            )
+
+            include_feet = instrument_mode == "Drum set"
+
+            ue_keys = st.multiselect(
+                "Upper-extremity notes",
+                options=list(range(128)),
+                default=DEFAULT_UE_KEYS,
+                placeholder="Search or add a MIDI note number",
+                help=(
+                    "Choose all note numbers assigned to the "
+                    "upper extremities."
+                ),
+                key=f"ue_note_values_{analysis_cycle}",
+            )
+
+            st.caption(
+                f"{len(ue_keys)} upper-extremity note(s) selected"
+            )
+
+            if include_feet:
+                foot_left, foot_right = st.columns(2)
+
+                with foot_left:
+                    left_foot_key = int(
+                        st.number_input(
+                            "Left foot",
+                            min_value=0,
+                            max_value=127,
+                            value=44,
+                            step=1,
+                            key=(
+                                f"left_foot_key_{analysis_cycle}"
+                            ),
+                        )
+                    )
+
+                with foot_right:
+                    right_foot_key = int(
+                        st.number_input(
+                            "Right foot",
+                            min_value=0,
+                            max_value=127,
+                            value=36,
+                            step=1,
+                            key=(
+                                f"right_foot_key_{analysis_cycle}"
+                            ),
+                        )
+                    )
+
+                mapping_conflicts: list[str] = []
+
+                if left_foot_key in ue_keys:
+                    mapping_conflicts.append(
+                        f"Note {left_foot_key} is assigned to both "
+                        "upper extremity and left foot."
+                    )
+
+                if right_foot_key in ue_keys:
+                    mapping_conflicts.append(
+                        f"Note {right_foot_key} is assigned to both "
+                        "upper extremity and right foot."
+                    )
+
+                if left_foot_key == right_foot_key:
+                    mapping_conflicts.append(
+                        f"Note {left_foot_key} is assigned to both feet."
+                    )
+
+                if mapping_conflicts:
+                    st.markdown(
+                        '<div class="mp-inline-warning">⚠ '
+                        + "<br>⚠ ".join(mapping_conflicts)
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div class="mp-inline-ok">'
+                        "✓ No mapping conflicts detected.</div>",
+                        unsafe_allow_html=True,
+                    )
+
+            else:
+                left_foot_key = 44
+                right_foot_key = 36
+
+                st.info(
+                    "Foot mappings and LF/RF measures are disabled "
+                    "for this instrument."
+                )
+
+    with scope_column:
+        with st.container(border=True):
+            st.markdown(
+                """
+                <h3 class="mp-card-heading">Analysis scope</h3>
+                <p class="mp-card-copy">
+                    Choose the level of detail needed for this analysis.
+                </p>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            analysis_mode = st.radio(
+                "Choose what to analyze",
+                options=[
+                    "Whole files + segments",
+                    "Whole files only",
+                    "Segments only",
+                ],
+                index=0,
+                key=f"analysis_mode_{analysis_cycle}",
+                label_visibility="collapsed",
+            )
+
+            run_whole = analysis_mode in {
+                "Whole files + segments",
+                "Whole files only",
+            }
+            run_segments = analysis_mode in {
+                "Whole files + segments",
+                "Segments only",
+            }
+
+            if analysis_mode == "Whole files + segments":
+                st.caption(
+                    "Provides session summaries and change over time."
+                )
+            elif analysis_mode == "Whole files only":
+                st.caption(
+                    "Provides one summary row per complete session."
+                )
+            else:
+                st.caption(
+                    "Examines changes across sections of each session."
+                )
+
+            if run_segments:
+                with st.container(border=True):
+                    st.markdown("**Segment settings**")
+
+                    number_of_segments = int(
+                        st.slider(
+                            "Number of segments",
+                            min_value=2,
+                            max_value=20,
+                            value=5,
+                            key=(
+                                f"segment_count_{analysis_cycle}"
+                            ),
+                        )
+                    )
+
+                    average_segments = st.checkbox(
+                        "Average matching segments across files",
+                        value=False,
+                        help=(
+                            "Combines all Segment 1 rows, all "
+                            "Segment 2 rows, and so on."
+                        ),
+                        key=(
+                            f"average_segments_{analysis_cycle}"
+                        ),
+                    )
+            else:
+                number_of_segments = 5
+                average_segments = False
+
     with st.container(border=True):
         st.markdown(
             """
-            <h3 class="mp-card-heading">Analysis scope</h3>
+            <h3 class="mp-card-heading">Results to include</h3>
             <p class="mp-card-copy">
-                Choose the level of detail needed for this analysis.
+                Use a prepared report or choose measures by category.
             </p>
             """,
             unsafe_allow_html=True,
         )
 
-        analysis_mode = st.radio(
-            "Choose what to analyze",
+        result_preset = st.radio(
+            "Report detail",
             options=[
-                "Whole files + segments",
-                "Whole files only",
-                "Segments only",
+                "Complete report",
+                "Counts only",
+                "Custom selection",
             ],
             index=0,
-            key=f"analysis_mode_{analysis_cycle}",
+            key=f"metric_preset_{analysis_cycle}",
             label_visibility="collapsed",
         )
 
-        run_whole = analysis_mode in {
-            "Whole files + segments",
-            "Whole files only",
-        }
-        run_segments = analysis_mode in {
-            "Whole files + segments",
-            "Segments only",
-        }
-
-        if analysis_mode == "Whole files + segments":
-            st.caption(
-                "Recommended · Provides session summaries and change over time."
-            )
-        elif analysis_mode == "Whole files only":
-            st.caption(
-                "Best for one summary row per complete MIDI session."
-            )
-        else:
-            st.caption(
-                "Best for examining changes across sections of each session."
-            )
-
-        if run_segments:
-            with st.container(border=True):
-                st.markdown("**Segment settings**")
-                number_of_segments = int(
-                    st.slider(
-                        "Number of segments",
-                        min_value=2,
-                        max_value=20,
-                        value=5,
-                        key=f"segment_count_{analysis_cycle}",
-                    )
-                )
-                average_segments = st.checkbox(
-                    "Average matching segments across files",
-                    value=False,
-                    help=(
-                        "Combines all Segment 1 rows, all Segment 2 rows, "
-                        "and so on."
-                    ),
-                    key=f"average_segments_{analysis_cycle}",
-                )
-        else:
-            number_of_segments = 5
-            average_segments = False
-
-with st.container(border=True):
-    st.markdown(
-        """
-        <h3 class="mp-card-heading">Results to include</h3>
-        <p class="mp-card-copy">
-            Use a prepared report or choose measures by category.
-        </p>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    result_preset = st.radio(
-        "Report detail",
-        options=[
-            "Complete report",
-            "Counts only",
-            "Custom selection",
-        ],
-        index=0,
-        key=f"metric_preset_{analysis_cycle}",
-        label_visibility="collapsed",
-    )
-
-    available_for_instrument = (
-        AVAILABLE_METRICS
-        if include_feet
-        else NON_FOOT_METRICS
-    )
-
-    if result_preset == "Complete report":
-        selected_metrics = available_for_instrument.copy()
-
-        if include_feet:
-            st.caption(
-                "12 measures selected · counts, velocity, and asynchrony"
-            )
-        else:
-            st.caption(
-                "6 non-foot measures selected · counts, velocity, "
-                "and asynchrony"
-            )
-
-    elif result_preset == "Counts only":
-        selected_metrics = (
-            COUNT_METRICS.copy()
+        available_for_instrument = (
+            AVAILABLE_METRICS
             if include_feet
-            else NON_FOOT_COUNT_METRICS.copy()
+            else NON_FOOT_METRICS
         )
 
-        if include_feet:
-            st.caption(
-                "4 measures selected · total, UE, LF, and RF note counts"
+        if result_preset == "Complete report":
+            selected_metrics = available_for_instrument.copy()
+
+            if include_feet:
+                st.caption(
+                    "12 measures selected · counts, velocity, "
+                    "and asynchrony"
+                )
+            else:
+                st.caption(
+                    "6 non-foot measures selected · counts, "
+                    "velocity, and asynchrony"
+                )
+
+        elif result_preset == "Counts only":
+            selected_metrics = (
+                COUNT_METRICS.copy()
+                if include_feet
+                else NON_FOOT_COUNT_METRICS.copy()
             )
+
+            if include_feet:
+                st.caption(
+                    "4 measures selected · total, UE, LF, and RF "
+                    "note counts"
+                )
+            else:
+                st.caption(
+                    "2 non-foot measures selected · total and UE "
+                    "note counts"
+                )
+
         else:
-            st.caption(
-                "2 non-foot measures selected · total and UE note counts"
+            st.divider()
+
+            selected_metrics = selected_custom_metrics(
+                include_feet=include_feet,
+                key_prefix="single",
             )
 
-    else:
-        st.divider()
-        selected_metrics = selected_custom_metrics(
-            include_feet=include_feet
-        )
-        st.caption(
-            f"{len(selected_metrics)} of "
-            f"{len(available_for_instrument)} available measures selected"
-        )
+            st.caption(
+                f"{len(selected_metrics)} of "
+                f"{len(available_for_instrument)} available "
+                "measures selected"
+            )
+
+    configs_by_role[ROLE_SINGLE] = {
+        "role": ROLE_SINGLE,
+        "instrument_mode": instrument_mode,
+        "include_feet": include_feet,
+        "ue_keys": ue_keys,
+        "left_foot_key": (
+            left_foot_key if include_feet else None
+        ),
+        "right_foot_key": (
+            right_foot_key if include_feet else None
+        ),
+        "analysis_mode": analysis_mode,
+        "run_whole": run_whole,
+        "run_segments": run_segments,
+        "number_of_segments": number_of_segments,
+        "average_segments": average_segments,
+        "selected_metrics": selected_metrics,
+    }
+
+    shared_metrics = selected_metrics.copy()
+    shared_analysis_level = True
 
 
 # =============================================================================
@@ -2761,15 +3262,7 @@ with st.container(border=True):
 
 current_settings = {
     "analysis_design": analysis_design,
-    "instrument_mode": instrument_mode,
-    "include_feet": include_feet,
-    "ue_keys": ue_keys,
-    "left_foot_key": left_foot_key if include_feet else None,
-    "right_foot_key": right_foot_key if include_feet else None,
-    "analysis_mode": analysis_mode,
-    "number_of_segments": number_of_segments,
-    "average_segments": average_segments,
-    "selected_metrics": selected_metrics,
+    "performer_configurations": configs_by_role,
 }
 
 current_upload_signature = combined_upload_signature(
@@ -2793,6 +3286,17 @@ existing_results_are_current = (
     and existing_settings_signature == current_settings_signature
 )
 
+all_configs_ready = all(
+    bool(config["ue_keys"])
+    and bool(config["selected_metrics"])
+    for config in configs_by_role.values()
+)
+
+comparison_ready = (
+    bool(shared_metrics)
+    and bool(shared_analysis_level)
+)
+
 with st.container(border=True):
     st.markdown(
         '<div class="mp-sticky-marker"></div>',
@@ -2807,14 +3311,19 @@ with st.container(border=True):
     with action_information:
         if comparison_enabled:
             status_text = (
-                f"{ready_by_role[ROLE_THERAPIST]} therapist file(s) ready · "
-                f"{ready_by_role[ROLE_PARTICIPANT]} participant file(s) ready · "
-                f"{len(selected_metrics)} measure(s)"
+                f"{ready_by_role[ROLE_THERAPIST]} therapist "
+                "file(s) ready · "
+                f"{ready_by_role[ROLE_PARTICIPANT]} participant "
+                "file(s) ready · "
+                f"{len(shared_metrics)} shared measure(s)"
             )
         else:
+            single_config = configs_by_role[ROLE_SINGLE]
+
             status_text = (
                 f"{ready_by_role[ROLE_SINGLE]} file(s) ready · "
-                f"{len(selected_metrics)} measure(s)"
+                f"{len(single_config['selected_metrics'])} "
+                "measure(s)"
             )
 
         st.markdown(f"**{status_text}**")
@@ -2833,8 +3342,11 @@ with st.container(border=True):
             use_container_width=True,
             disabled=(
                 not uploads_ready
-                or not ue_keys
-                or not selected_metrics
+                or not all_configs_ready
+                or (
+                    comparison_enabled
+                    and not comparison_ready
+                )
             ),
             key=f"analyze_midi_files_{analysis_cycle}",
         )
@@ -2868,15 +3380,6 @@ if submitted:
             ) as temporary:
                 temporary_path = Path(temporary)
 
-                metrics_argument = (
-                    ["all"]
-                    if (
-                        include_feet
-                        and set(selected_metrics) == set(AVAILABLE_METRICS)
-                    )
-                    else ["Name", *selected_metrics]
-                )
-
                 datasets: dict[
                     str,
                     dict[str, pd.DataFrame],
@@ -2888,6 +3391,8 @@ if submitted:
                 ] = {}
 
                 for role, uploaded_files in uploads_by_role.items():
+                    config = configs_by_role[role]
+
                     role_slug = re.sub(
                         r"[^a-z0-9]+",
                         "_",
@@ -2895,7 +3400,23 @@ if submitted:
                     ).strip("_")
 
                     analysis_status.write(
-                        f"Validating and analyzing {role.lower()} files."
+                        f"Validating and analyzing {role.lower()} "
+                        "files."
+                    )
+
+                    metrics_argument = (
+                        ["all"]
+                        if (
+                            config["include_feet"]
+                            and set(
+                                config["selected_metrics"]
+                            )
+                            == set(AVAILABLE_METRICS)
+                        )
+                        else [
+                            "Name",
+                            *config["selected_metrics"],
+                        ]
                     )
 
                     (
@@ -2907,28 +3428,42 @@ if submitted:
                         temporary_path=temporary_path,
                         dataset_slug=role_slug,
                         metrics_argument=metrics_argument,
-                        run_whole=run_whole,
-                        run_segments=run_segments,
-                        number_of_segments=number_of_segments,
-                        average_segments=average_segments,
-                        ue_keys=ue_keys,
-                        left_foot_key=left_foot_key,
-                        right_foot_key=right_foot_key,
+                        run_whole=config["run_whole"],
+                        run_segments=config["run_segments"],
+                        number_of_segments=(
+                            config["number_of_segments"]
+                        ),
+                        average_segments=(
+                            config["average_segments"]
+                        ),
+                        ue_keys=config["ue_keys"],
+                        left_foot_key=(
+                            config["left_foot_key"]
+                            if config["include_feet"]
+                            else 44
+                        ),
+                        right_foot_key=(
+                            config["right_foot_key"]
+                            if config["include_feet"]
+                            else 36
+                        ),
                     )
 
                     if not valid_names:
                         clear_analysis_state()
+
                         analysis_status.update(
                             label=(
-                                f"No usable {role.lower()} MIDI files "
-                                "were found."
+                                f"No usable {role.lower()} MIDI "
+                                "files were found."
                             ),
                             state="error",
                             expanded=True,
                         )
+
                         st.error(
-                            f"None of the {role.lower()} files passed "
-                            "complete MIDI validation."
+                            f"None of the {role.lower()} files "
+                            "passed complete MIDI validation."
                         )
 
                         if skipped_files:
@@ -2954,9 +3489,13 @@ if submitted:
                         else "single"
                     ),
                     "datasets": datasets,
+                    "configurations": configs_by_role,
+                    "shared_metrics": shared_metrics,
                 }
 
-                st.session_state["midipy_results"] = analysis_payload
+                st.session_state["midipy_results"] = (
+                    analysis_payload
+                )
                 st.session_state[
                     "midipy_valid_names"
                 ] = valid_names_by_role
@@ -2989,15 +3528,18 @@ if submitted:
 
         except Exception as error:
             clear_analysis_state()
+
             analysis_status.update(
                 label="The analysis could not be completed.",
                 state="error",
                 expanded=True,
             )
+
             st.error(
-                "MidiPy encountered a problem while processing the files. "
-                "Review the guidance below and try again."
+                "MidiPy encountered a problem while processing "
+                "the files. Review the guidance below and try again."
             )
+
             st.markdown(
                 """
                 - Confirm that the files are genuine Standard MIDI files.
@@ -3035,6 +3577,11 @@ with progress_placeholder:
 
 if analysis_payload and results_are_current:
     datasets = analysis_payload["datasets"]
+    analyzed_configs = analysis_payload["configurations"]
+    analyzed_shared_metrics = analysis_payload[
+        "shared_metrics"
+    ]
+
     valid_names_by_role = st.session_state.get(
         "midipy_valid_names",
         {},
@@ -3050,7 +3597,7 @@ if analysis_payload and results_are_current:
         comparison_summary = build_comparison_summary(
             datasets[ROLE_THERAPIST],
             datasets[ROLE_PARTICIPANT],
-            selected_metrics,
+            analyzed_shared_metrics,
         )
 
     export_tables = comparison_export_tables(
@@ -3072,8 +3619,8 @@ if analysis_payload and results_are_current:
     st.markdown(
         f"""
         <div class="mp-results-banner" role="status">
-            ✓ Analysis completed · {total_processed} file(s) processed ·
-            {total_skipped} skipped
+            ✓ Analysis completed · {total_processed} file(s)
+            processed · {total_skipped} skipped
         </div>
         """,
         unsafe_allow_html=True,
@@ -3089,7 +3636,8 @@ if analysis_payload and results_are_current:
             """
             <h2 class="mp-section-title">4. Review results</h2>
             <p class="mp-section-copy">
-                Review the comparison and the underlying performer data.
+                Review the comparison and each performer's
+                independently configured results.
             </p>
             """,
             unsafe_allow_html=True,
@@ -3137,20 +3685,35 @@ if analysis_payload and results_are_current:
             [],
         )
 
+        (
+            _,
+            _,
+            comparison_basis,
+        ) = common_result_dataframes(
+            datasets[ROLE_THERAPIST],
+            datasets[ROLE_PARTICIPANT],
+        )
+
         st.markdown(
             f"""
             <div class="mp-comparison-banner">
                 <div>
                     <small>Music therapist</small>
-                    <strong>{len(therapist_valid)} file(s) analyzed</strong>
+                    <strong>
+                        {len(therapist_valid)} file(s) analyzed
+                    </strong>
                 </div>
                 <div>
                     <small>Participant</small>
-                    <strong>{len(participant_valid)} file(s) analyzed</strong>
+                    <strong>
+                        {len(participant_valid)} file(s) analyzed
+                    </strong>
                 </div>
                 <div>
                     <small>Shared measures</small>
-                    <strong>{len(comparison_summary)} available</strong>
+                    <strong>
+                        {len(comparison_summary)} available
+                    </strong>
                 </div>
             </div>
             """,
@@ -3158,15 +3721,20 @@ if analysis_payload and results_are_current:
         )
 
         st.subheader("Comparison overview")
+
         st.caption(
-            "Count measures are summed across files. Velocity and asynchrony "
-            "measures are averaged. Differences are calculated as "
-            "participant minus music therapist."
+            f"Comparison basis: "
+            f"{comparison_basis or 'no common analysis level'}. "
+            "Only measures selected for both performers are included. "
+            "Count measures are summed; velocity and asynchrony "
+            "measures are averaged."
         )
 
-        comparison_chart_column, comparison_table_column = st.columns(
-            [1, 1.25],
-            gap="large",
+        comparison_chart_column, comparison_table_column = (
+            st.columns(
+                [1, 1.25],
+                gap="large",
+            )
         )
 
         with comparison_chart_column:
@@ -3178,22 +3746,29 @@ if analysis_payload and results_are_current:
                     columns=["Metric key"],
                     errors="ignore",
                 )
+
                 st.dataframe(
                     display_comparison,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        ROLE_THERAPIST: st.column_config.NumberColumn(
-                            ROLE_THERAPIST,
-                            format="%.2f",
+                        ROLE_THERAPIST: (
+                            st.column_config.NumberColumn(
+                                ROLE_THERAPIST,
+                                format="%.2f",
+                            )
                         ),
-                        ROLE_PARTICIPANT: st.column_config.NumberColumn(
-                            ROLE_PARTICIPANT,
-                            format="%.2f",
+                        ROLE_PARTICIPANT: (
+                            st.column_config.NumberColumn(
+                                ROLE_PARTICIPANT,
+                                format="%.2f",
+                            )
                         ),
-                        "Difference": st.column_config.NumberColumn(
-                            "Participant − therapist",
-                            format="%.2f",
+                        "Difference": (
+                            st.column_config.NumberColumn(
+                                "Participant − therapist",
+                                format="%.2f",
+                            )
                         ),
                         "Relative difference (%)": (
                             st.column_config.NumberColumn(
@@ -3205,14 +3780,16 @@ if analysis_payload and results_are_current:
                 )
             else:
                 st.info(
-                    "No shared whole-file or segment measures are available."
+                    "No shared measures are available at a common "
+                    "analysis level."
                 )
 
         st.markdown(
             """
             <p class="mp-neutral-note">
-                A higher or lower value is not automatically better. Interpretation
-                depends on the measure, instrument, therapeutic goal, and session context.
+                A higher or lower value is not automatically better.
+                Interpretation depends on the measure, instrument,
+                therapeutic goal, and session context.
             </p>
             """,
             unsafe_allow_html=True,
@@ -3221,12 +3798,16 @@ if analysis_payload and results_are_current:
         render_segment_comparison(
             datasets[ROLE_THERAPIST],
             datasets[ROLE_PARTICIPANT],
-            selected_metrics,
+            analyzed_shared_metrics,
         )
 
         st.subheader("Individual performer results")
+
         therapist_tab, participant_tab = st.tabs(
-            [ROLE_THERAPIST, ROLE_PARTICIPANT]
+            [
+                ROLE_THERAPIST,
+                ROLE_PARTICIPANT,
+            ]
         )
 
         with therapist_tab:
@@ -3241,7 +3822,9 @@ if analysis_payload and results_are_current:
                     ROLE_THERAPIST,
                     [],
                 ),
-                include_feet=include_feet,
+                include_feet=analyzed_configs[
+                    ROLE_THERAPIST
+                ]["include_feet"],
             )
 
         with participant_tab:
@@ -3256,14 +3839,21 @@ if analysis_payload and results_are_current:
                     ROLE_PARTICIPANT,
                     [],
                 ),
-                include_feet=include_feet,
+                include_feet=analyzed_configs[
+                    ROLE_PARTICIPANT
+                ]["include_feet"],
             )
 
     else:
         single_results = datasets[ROLE_SINGLE]
+        single_config = analyzed_configs[ROLE_SINGLE]
 
         overview_tab, data_tab, quality_tab = st.tabs(
-            ["Overview", "Detailed data", "File quality"]
+            [
+                "Overview",
+                "Detailed data",
+                "File quality",
+            ]
         )
 
         with overview_tab:
@@ -3271,10 +3861,11 @@ if analysis_payload and results_are_current:
                 single_results,
                 valid_names_by_role.get(ROLE_SINGLE, []),
                 skipped_files_by_role.get(ROLE_SINGLE, []),
-                include_feet,
+                single_config["include_feet"],
             )
 
             result_options = list(single_results.keys())
+
             selected_result_name = st.radio(
                 "Result set",
                 options=result_options,
@@ -3294,7 +3885,9 @@ if analysis_payload and results_are_current:
             )
 
         with data_tab:
-            for result_name, dataframe in single_results.items():
+            for result_name, dataframe in (
+                single_results.items()
+            ):
                 label = (
                     "Whole-file results"
                     if result_name == "Whole_File_Results"
@@ -3306,6 +3899,7 @@ if analysis_payload and results_are_current:
                     expanded=len(single_results) == 1,
                 ):
                     display_dataframe(dataframe)
+
                     st.caption(
                         f"{len(dataframe):,} row(s) × "
                         f"{len(dataframe.columns):,} column(s)"
@@ -3316,6 +3910,7 @@ if analysis_payload and results_are_current:
 
             with quality_left:
                 st.markdown("**Successfully analyzed**")
+
                 for filename in valid_names_by_role.get(
                     ROLE_SINGLE,
                     [],
@@ -3324,6 +3919,7 @@ if analysis_payload and results_are_current:
 
             with quality_right:
                 st.markdown("**Skipped during validation**")
+
                 single_skipped = skipped_files_by_role.get(
                     ROLE_SINGLE,
                     [],
@@ -3343,14 +3939,16 @@ if analysis_payload and results_are_current:
 
 else:
     st.info(
-        "The results area will appear after the MIDI files have been analyzed."
+        "The results area will appear after the MIDI files "
+        "have been analyzed."
     )
 
 
 st.markdown(
     """
     <div class="mp-footer">
-        MidiPy Analysis Studio · Clear, guided, and neutral performer comparison
+        MidiPy Analysis Studio · Independent performer
+        configuration with neutral comparison
     </div>
     """,
     unsafe_allow_html=True,
