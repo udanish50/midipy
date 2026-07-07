@@ -429,7 +429,7 @@ st.markdown(
 
     [data-testid="stRadio"] div[role="radiogroup"] {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 0.55rem;
     }
 
@@ -474,9 +474,10 @@ st.markdown(
     /* Results navigation: separate, spacious tab cards */
     [data-baseweb="tab-list"] {
         display: grid !important;
-        grid-template-columns: repeat(3, minmax(150px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 0.8rem !important;
-        width: min(100%, 760px);
+        width: 100%;
+        max-width: 820px;
         margin: 0 0 1rem;
         padding: 0 !important;
         border: 0 !important;
@@ -603,6 +604,110 @@ st.markdown(
             transition-duration: 0.01ms !important;
         }
     }
+    
+    /* Comparison mode */
+    .mp-analysis-mode-note {
+        margin-top: 0.55rem;
+        padding: 0.72rem 0.82rem;
+        border: 1px solid #d9e2f5;
+        border-radius: 11px;
+        background: #f7f9ff;
+        color: #485873;
+        font-size: 0.88rem;
+    }
+
+    .mp-role-heading {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        margin-bottom: 0.2rem;
+    }
+
+    .mp-role-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2rem;
+        height: 2rem;
+        padding: 0 0.62rem;
+        border-radius: 999px;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.025em;
+    }
+
+    .mp-role-badge.therapist {
+        border: 1px solid #c7d4fb;
+        background: #eef3ff;
+        color: #294bbf;
+    }
+
+    .mp-role-badge.participant {
+        border: 1px solid #b9dfd9;
+        background: #edf9f6;
+        color: #146b61;
+    }
+
+    .mp-role-title {
+        margin: 0;
+        color: #172033;
+        font-size: 1.05rem;
+        font-weight: 780;
+    }
+
+    .mp-role-copy {
+        margin: 0.1rem 0 0.75rem;
+        color: #5b6880;
+        font-size: 0.86rem;
+    }
+
+    .mp-comparison-callout {
+        padding: 0.82rem 0.92rem;
+        border: 1px solid #d8e2f7;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #f8faff, #f4fbfa);
+        color: #40506c;
+        font-size: 0.88rem;
+    }
+
+    .mp-comparison-banner {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.7rem;
+        margin: 0.8rem 0 1rem;
+    }
+
+    .mp-comparison-banner > div {
+        padding: 0.82rem 0.9rem;
+        border: 1px solid #dfe5ef;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 5px 15px rgba(31, 47, 86, 0.045);
+    }
+
+    .mp-comparison-banner small {
+        display: block;
+        margin-bottom: 0.18rem;
+        color: #69768a;
+    }
+
+    .mp-comparison-banner strong {
+        color: #172033;
+        font-size: 1rem;
+    }
+
+    .mp-neutral-note {
+        margin-top: 0.55rem;
+        color: #5b6880;
+        font-size: 0.84rem;
+    }
+
+    @media (max-width: 760px) {
+        .mp-comparison-banner {
+            grid-template-columns: 1fr;
+        }
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -993,6 +1098,7 @@ def chartable_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
 def render_result_chart(
     dataframe: pd.DataFrame,
     result_name: str,
+    key_prefix: str = "",
 ) -> None:
     """Render charts with an explicit Vega-Lite specification.
 
@@ -1021,7 +1127,7 @@ def render_result_chart(
         options=available,
         index=available.index(default_metric),
         format_func=lambda metric: METRIC_LABELS.get(metric, metric),
-        key=f"chart_metric_{result_name}_{analysis_cycle}",
+        key=f"chart_metric_{key_prefix}_{result_name}_{analysis_cycle}",
         help=(
             "The chart uses the mean value when a table cell contains "
             "a mean and standard deviation."
@@ -1127,7 +1233,7 @@ def render_result_chart(
                     },
                     width="stretch",
                     height=420,
-                    key=f"segment_vega_{result_name}_{selected_metric}_{analysis_cycle}",
+                    key=f"segment_vega_{key_prefix}_{result_name}_{selected_metric}_{analysis_cycle}",
                 )
                 return
 
@@ -1192,7 +1298,7 @@ def render_result_chart(
             },
             width="stretch",
             height=420,
-            key=f"whole_vega_{result_name}_{selected_metric}_{analysis_cycle}",
+            key=f"whole_vega_{key_prefix}_{result_name}_{selected_metric}_{analysis_cycle}",
         )
 
     except Exception as chart_error:
@@ -1229,18 +1335,48 @@ def start_new_analysis() -> None:
 
 
 
+
 # =============================================================================
-# INTERACTION AND PRESENTATION HELPERS
+# COMPARISON-AWARE INTERACTION HELPERS
 # =============================================================================
 
+ROLE_THERAPIST = "Music therapist"
+ROLE_PARTICIPANT = "Participant"
+ROLE_SINGLE = "Performer"
+
+
+def clear_analysis_state() -> None:
+    for key in [
+        "midipy_results",
+        "midipy_valid_names",
+        "midipy_skipped_files",
+        "midipy_analysis_signature",
+        "midipy_analysis_settings_signature",
+        "midipy_last_settings",
+    ]:
+        st.session_state.pop(key, None)
+
+
+def start_new_analysis() -> None:
+    """Reset results, uploads, and configurable controls."""
+    clear_analysis_state()
+    st.session_state["analysis_cycle"] = (
+        int(st.session_state.get("analysis_cycle", 0)) + 1
+    )
+    st.rerun()
+
+
 def has_existing_work() -> bool:
-    current_uploads = st.session_state.get(
+    upload_keys = [
         f"midi_upload_{analysis_cycle}",
-        [],
-    )
-    return bool(current_uploads) or bool(
-        st.session_state.get("midipy_results")
-    )
+        f"therapist_upload_{analysis_cycle}",
+        f"participant_upload_{analysis_cycle}",
+    ]
+
+    return any(
+        bool(st.session_state.get(key))
+        for key in upload_keys
+    ) or bool(st.session_state.get("midipy_results"))
 
 
 @st.dialog("Start a new analysis?")
@@ -1249,9 +1385,9 @@ def confirm_new_analysis() -> None:
         "This will remove the uploaded files, current settings, and displayed "
         "results from this browser session."
     )
-    keep_column, reset_column = st.columns(2)
+    cancel_column, reset_column = st.columns(2)
 
-    with keep_column:
+    with cancel_column:
         st.caption("Close this window to keep the current analysis.")
 
     with reset_column:
@@ -1266,7 +1402,9 @@ def confirm_new_analysis() -> None:
 
 def render_progress_stepper(active_step: int) -> None:
     labels = ["Upload", "Configure", "Analyze", "Review"]
-    parts: list[str] = ['<div class="mp-progress" aria-label="Analysis progress">']
+    parts: list[str] = [
+        '<div class="mp-progress" aria-label="Analysis progress">'
+    ]
 
     for index, label in enumerate(labels, start=1):
         if index < active_step:
@@ -1299,10 +1437,14 @@ def render_progress_stepper(active_step: int) -> None:
     st.markdown("".join(parts), unsafe_allow_html=True)
 
 
-def format_file_status_table(precheck_rows: list[dict[str, Any]]) -> pd.DataFrame:
-    rows = []
+def format_file_status_table(
+    precheck_rows: list[dict[str, Any]],
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+
     for row in precheck_rows:
         details = row["Details"]
+
         if row["Status"] == "Ready":
             status = "✓ Ready"
         elif "Empty" in details:
@@ -1320,11 +1462,12 @@ def format_file_status_table(precheck_rows: list[dict[str, Any]]) -> pd.DataFram
                 "Details": details,
             }
         )
+
     return pd.DataFrame(rows)
 
 
 def selected_custom_metrics(include_feet: bool) -> list[str]:
-    """Show only metrics that are meaningful for the selected instrument."""
+    """Show only measures relevant to the selected instrument."""
     selected: list[str] = []
     group_columns = st.columns(3)
 
@@ -1348,25 +1491,625 @@ def selected_custom_metrics(include_feet: bool) -> list[str]:
                     help=METRIC_HELP.get(metric),
                     key=f"metric_{metric}_{analysis_cycle}",
                 )
+
                 if checked:
                     selected.append(metric)
 
     return selected
 
 
+def combined_upload_signature(
+    uploads_by_role: dict[str, list[Any]],
+) -> str:
+    """Create one stable signature for single or comparison uploads."""
+    role_signatures = {
+        role: upload_signature(files)
+        for role, files in sorted(uploads_by_role.items())
+    }
+    return settings_signature(role_signatures)
+
+
+def run_dataset_analysis(
+    *,
+    uploaded_files: list[Any],
+    temporary_path: Path,
+    dataset_slug: str,
+    metrics_argument: list[str],
+    run_whole: bool,
+    run_segments: bool,
+    number_of_segments: int,
+    average_segments: bool,
+    ue_keys: list[int],
+    left_foot_key: int,
+    right_foot_key: int,
+) -> tuple[
+    dict[str, pd.DataFrame],
+    list[str],
+    list[tuple[str, str]],
+]:
+    """Validate and analyze one performer dataset."""
+    midi_folder = temporary_path / f"{dataset_slug}_validated_midi"
+    midi_folder.mkdir(parents=True, exist_ok=True)
+
+    valid_names, skipped_files = validate_and_save_uploads(
+        uploaded_files,
+        midi_folder,
+    )
+
+    if not valid_names:
+        return {}, valid_names, skipped_files
+
+    results: dict[str, pd.DataFrame] = {}
+
+    if run_whole:
+        whole_df = parser(
+            source=str(midi_folder),
+            metrics=metrics_argument,
+            output_format="csv",
+            save_path=str(
+                temporary_path / f"{dataset_slug}_whole_results"
+            ),
+            ue_keys=ue_keys,
+            lf_key=left_foot_key,
+            rf_key=right_foot_key,
+        )
+        results["Whole_File_Results"] = whole_df
+
+    if run_segments:
+        segment_df = parser_segments(
+            source=str(midi_folder),
+            metrics=metrics_argument,
+            output_format="csv",
+            save_path=str(
+                temporary_path / f"{dataset_slug}_segment_results"
+            ),
+            num_segments=number_of_segments,
+            mean_segments=False,
+            ue_keys=ue_keys,
+            lf_key=left_foot_key,
+            rf_key=right_foot_key,
+        )
+
+        if average_segments:
+            segment_df = average_segment_rows(segment_df)
+
+        results["Segment_Results"] = segment_df
+
+    return results, valid_names, skipped_files
+
+
+def aggregate_metric_value(
+    dataframe: pd.DataFrame,
+    metric: str,
+) -> float | None:
+    """Aggregate one measure across all files without implying quality."""
+    if metric not in dataframe.columns:
+        return None
+
+    working = dataframe.copy()
+
+    if "Name" in working.columns:
+        totals = working[
+            working["Name"].astype(str).str.upper().eq("TOTALS")
+        ]
+        observations = working[
+            ~working["Name"].astype(str).str.upper().eq("TOTALS")
+        ]
+    else:
+        totals = pd.DataFrame()
+        observations = working
+
+    if metric in COUNT_METRICS:
+        if not totals.empty:
+            return mean_from_metric(totals.iloc[0][metric])
+
+        values = observations[metric].map(mean_from_metric).dropna()
+        return float(values.sum()) if not values.empty else None
+
+    values = observations[metric].map(mean_from_metric).dropna()
+    return float(values.mean()) if not values.empty else None
+
+
+def primary_result_dataframe(
+    dataset_results: dict[str, pd.DataFrame],
+) -> pd.DataFrame | None:
+    """Prefer whole-file results; otherwise use segment results."""
+    if "Whole_File_Results" in dataset_results:
+        return dataset_results["Whole_File_Results"]
+
+    return dataset_results.get("Segment_Results")
+
+
+def build_comparison_summary(
+    therapist_results: dict[str, pd.DataFrame],
+    participant_results: dict[str, pd.DataFrame],
+    selected_metrics: list[str],
+) -> pd.DataFrame:
+    therapist_df = primary_result_dataframe(therapist_results)
+    participant_df = primary_result_dataframe(participant_results)
+
+    if therapist_df is None or participant_df is None:
+        return pd.DataFrame()
+
+    rows: list[dict[str, Any]] = []
+
+    for metric in selected_metrics:
+        therapist_value = aggregate_metric_value(
+            therapist_df,
+            metric,
+        )
+        participant_value = aggregate_metric_value(
+            participant_df,
+            metric,
+        )
+
+        if therapist_value is None or participant_value is None:
+            continue
+
+        difference = participant_value - therapist_value
+        relative_difference = (
+            difference / abs(therapist_value) * 100
+            if therapist_value != 0
+            else None
+        )
+
+        rows.append(
+            {
+                "Metric key": metric,
+                "Measure": METRIC_LABELS.get(metric, metric),
+                ROLE_THERAPIST: therapist_value,
+                ROLE_PARTICIPANT: participant_value,
+                "Difference": difference,
+                "Relative difference (%)": relative_difference,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def comparison_export_tables(
+    datasets: dict[str, dict[str, pd.DataFrame]],
+    comparison_summary: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    export_tables: dict[str, pd.DataFrame] = {}
+
+    role_prefixes = {
+        ROLE_THERAPIST: "Therapist",
+        ROLE_PARTICIPANT: "Participant",
+        ROLE_SINGLE: "Performer",
+    }
+
+    for role, dataset_results in datasets.items():
+        prefix = role_prefixes.get(role, role)
+
+        for result_name, dataframe in dataset_results.items():
+            result_suffix = (
+                "Whole"
+                if result_name == "Whole_File_Results"
+                else "Segments"
+            )
+            export_tables[f"{prefix} {result_suffix}"] = dataframe
+
+    if not comparison_summary.empty:
+        export_tables["Comparison Summary"] = (
+            comparison_summary
+            .drop(columns=["Metric key"], errors="ignore")
+        )
+
+    return export_tables
+
+
+def render_comparison_chart(
+    comparison_summary: pd.DataFrame,
+) -> None:
+    if comparison_summary.empty:
+        st.info("No shared measures are available for comparison.")
+        return
+
+    metric_options = comparison_summary["Metric key"].tolist()
+
+    selected_metric = st.selectbox(
+        "Measure to compare",
+        options=metric_options,
+        format_func=lambda metric: METRIC_LABELS.get(metric, metric),
+        key=f"comparison_metric_{analysis_cycle}",
+    )
+
+    selected_row = comparison_summary[
+        comparison_summary["Metric key"].eq(selected_metric)
+    ].iloc[0]
+
+    chart_data = pd.DataFrame(
+        {
+            "Performer": [
+                ROLE_THERAPIST,
+                ROLE_PARTICIPANT,
+            ],
+            "Value": [
+                selected_row[ROLE_THERAPIST],
+                selected_row[ROLE_PARTICIPANT],
+            ],
+        }
+    )
+
+    metric_title = METRIC_LABELS.get(
+        selected_metric,
+        selected_metric,
+    )
+
+    st.vega_lite_chart(
+        chart_data,
+        {
+            "mark": {
+                "type": "bar",
+                "cornerRadiusTopLeft": 7,
+                "cornerRadiusTopRight": 7,
+                "tooltip": True,
+            },
+            "encoding": {
+                "x": {
+                    "field": "Performer",
+                    "type": "nominal",
+                    "title": None,
+                    "sort": [
+                        ROLE_THERAPIST,
+                        ROLE_PARTICIPANT,
+                    ],
+                },
+                "y": {
+                    "field": "Value",
+                    "type": "quantitative",
+                    "title": metric_title,
+                },
+                "color": {
+                    "field": "Performer",
+                    "type": "nominal",
+                    "legend": None,
+                    "scale": {
+                        "domain": [
+                            ROLE_THERAPIST,
+                            ROLE_PARTICIPANT,
+                        ],
+                        "range": [
+                            "#3157D5",
+                            "#1A8B7E",
+                        ],
+                    },
+                },
+                "tooltip": [
+                    {
+                        "field": "Performer",
+                        "type": "nominal",
+                        "title": "Performer",
+                    },
+                    {
+                        "field": "Value",
+                        "type": "quantitative",
+                        "title": metric_title,
+                        "format": ".2f",
+                    },
+                ],
+            },
+        },
+        width="stretch",
+        height=350,
+        key=f"comparison_bar_{selected_metric}_{analysis_cycle}",
+    )
+
+
+def segment_comparison_dataframe(
+    therapist_segments: pd.DataFrame,
+    participant_segments: pd.DataFrame,
+    metric: str,
+) -> pd.DataFrame:
+    rows: list[pd.DataFrame] = []
+
+    for role, dataframe in [
+        (ROLE_THERAPIST, therapist_segments),
+        (ROLE_PARTICIPANT, participant_segments),
+    ]:
+        if "Name" not in dataframe.columns or metric not in dataframe.columns:
+            continue
+
+        working = dataframe[["Name", metric]].copy()
+        working["Segment"] = pd.to_numeric(
+            working["Name"]
+            .astype(str)
+            .str.extract(r"Segment\s+(\d+)", expand=False),
+            errors="coerce",
+        )
+        working["Value"] = working[metric].map(mean_from_metric)
+        working = working.dropna(subset=["Segment", "Value"])
+
+        if working.empty:
+            continue
+
+        averaged = (
+            working.groupby("Segment", as_index=False)["Value"]
+            .mean()
+            .sort_values("Segment")
+        )
+        averaged["Performer"] = role
+        rows.append(averaged)
+
+    if not rows:
+        return pd.DataFrame()
+
+    return pd.concat(rows, ignore_index=True)
+
+
+def render_segment_comparison(
+    therapist_results: dict[str, pd.DataFrame],
+    participant_results: dict[str, pd.DataFrame],
+    selected_metrics: list[str],
+) -> None:
+    therapist_segments = therapist_results.get("Segment_Results")
+    participant_segments = participant_results.get("Segment_Results")
+
+    if therapist_segments is None or participant_segments is None:
+        return
+
+    shared_metrics = [
+        metric
+        for metric in selected_metrics
+        if (
+            metric in therapist_segments.columns
+            and metric in participant_segments.columns
+        )
+    ]
+
+    if not shared_metrics:
+        return
+
+    st.subheader("Segment trajectories")
+
+    selected_metric = st.selectbox(
+        "Measure across segments",
+        options=shared_metrics,
+        format_func=lambda metric: METRIC_LABELS.get(metric, metric),
+        key=f"comparison_segment_metric_{analysis_cycle}",
+    )
+
+    chart_data = segment_comparison_dataframe(
+        therapist_segments,
+        participant_segments,
+        selected_metric,
+    )
+
+    if chart_data.empty:
+        st.info("No segment values are available for this measure.")
+        return
+
+    metric_title = METRIC_LABELS.get(
+        selected_metric,
+        selected_metric,
+    )
+
+    st.vega_lite_chart(
+        chart_data,
+        {
+            "mark": {
+                "type": "line",
+                "point": True,
+                "tooltip": True,
+                "strokeWidth": 3,
+            },
+            "encoding": {
+                "x": {
+                    "field": "Segment",
+                    "type": "quantitative",
+                    "title": "Segment",
+                    "axis": {"tickMinStep": 1},
+                },
+                "y": {
+                    "field": "Value",
+                    "type": "quantitative",
+                    "title": metric_title,
+                    "scale": {"zero": False},
+                },
+                "color": {
+                    "field": "Performer",
+                    "type": "nominal",
+                    "title": None,
+                    "scale": {
+                        "domain": [
+                            ROLE_THERAPIST,
+                            ROLE_PARTICIPANT,
+                        ],
+                        "range": [
+                            "#3157D5",
+                            "#1A8B7E",
+                        ],
+                    },
+                },
+                "tooltip": [
+                    {
+                        "field": "Performer",
+                        "type": "nominal",
+                        "title": "Performer",
+                    },
+                    {
+                        "field": "Segment",
+                        "type": "quantitative",
+                        "title": "Segment",
+                    },
+                    {
+                        "field": "Value",
+                        "type": "quantitative",
+                        "title": metric_title,
+                        "format": ".2f",
+                    },
+                ],
+            },
+        },
+        width="stretch",
+        height=380,
+        key=f"comparison_segment_chart_{selected_metric}_{analysis_cycle}",
+    )
+
+
+def render_dataset_summary(
+    dataset_results: dict[str, pd.DataFrame],
+    valid_names: list[str],
+    skipped_files: list[tuple[str, str]],
+    include_feet: bool,
+) -> None:
+    whole_dataframe = dataset_results.get("Whole_File_Results")
+
+    if whole_dataframe is not None:
+        summary = result_summary(whole_dataframe)
+
+        if include_feet:
+            columns = st.columns(5)
+            columns[0].metric(
+                "Files analyzed",
+                int(summary["files"] or len(valid_names)),
+            )
+            columns[1].metric(
+                "Total notes",
+                f"{int(summary['total']):,}"
+                if summary["total"] is not None
+                else "—",
+            )
+            columns[2].metric(
+                "UE notes",
+                f"{int(summary['ue']):,}"
+                if summary["ue"] is not None
+                else "—",
+            )
+            columns[3].metric(
+                "LF notes",
+                f"{int(summary['lf']):,}"
+                if summary["lf"] is not None
+                else "—",
+            )
+            columns[4].metric(
+                "RF notes",
+                f"{int(summary['rf']):,}"
+                if summary["rf"] is not None
+                else "—",
+            )
+        else:
+            columns = st.columns(3)
+            columns[0].metric(
+                "Files analyzed",
+                int(summary["files"] or len(valid_names)),
+            )
+            columns[1].metric(
+                "Total notes",
+                f"{int(summary['total']):,}"
+                if summary["total"] is not None
+                else "—",
+            )
+            columns[2].metric(
+                "UE notes",
+                f"{int(summary['ue']):,}"
+                if summary["ue"] is not None
+                else "—",
+            )
+    else:
+        columns = st.columns(3)
+        columns[0].metric("Files analyzed", len(valid_names))
+        columns[1].metric(
+            "Segment rows",
+            len(dataset_results.get("Segment_Results", [])),
+        )
+        columns[2].metric("Files skipped", len(skipped_files))
+
+
+def render_dataset_details(
+    *,
+    role: str,
+    dataset_results: dict[str, pd.DataFrame],
+    valid_names: list[str],
+    skipped_files: list[tuple[str, str]],
+    include_feet: bool,
+) -> None:
+    role_key = re.sub(r"[^a-z0-9]+", "_", role.lower()).strip("_")
+
+    render_dataset_summary(
+        dataset_results,
+        valid_names,
+        skipped_files,
+        include_feet,
+    )
+
+    st.subheader("Visual overview")
+
+    result_options = list(dataset_results.keys())
+    selected_result_name = st.radio(
+        "Result set",
+        options=result_options,
+        horizontal=True,
+        format_func=lambda name: (
+            "Whole-file results"
+            if name == "Whole_File_Results"
+            else "Segment results"
+        ),
+        key=f"result_set_{role_key}_{analysis_cycle}",
+    )
+
+    render_result_chart(
+        dataset_results[selected_result_name],
+        selected_result_name,
+        key_prefix=role_key,
+    )
+
+    st.subheader("Detailed data")
+
+    for result_name, dataframe in dataset_results.items():
+        label = (
+            "Whole-file results"
+            if result_name == "Whole_File_Results"
+            else "Segment results"
+        )
+
+        with st.expander(label, expanded=len(dataset_results) == 1):
+            display_dataframe(dataframe)
+            st.caption(
+                f"{len(dataframe):,} row(s) × "
+                f"{len(dataframe.columns):,} column(s)"
+            )
+
+    with st.expander("File quality"):
+        quality_left, quality_right = st.columns(2)
+
+        with quality_left:
+            st.markdown("**Successfully analyzed**")
+            for filename in valid_names:
+                st.write(f"✓ {filename}")
+
+        with quality_right:
+            st.markdown("**Skipped during validation**")
+            if skipped_files:
+                st.dataframe(
+                    pd.DataFrame(
+                        skipped_files,
+                        columns=["File", "Reason"],
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.write("✓ No files were skipped.")
+
 
 # =============================================================================
 # COMPACT HEADER
 # =============================================================================
 
-header_content, header_actions = st.columns([5.2, 1.8], vertical_alignment="center")
+header_content, header_actions = st.columns(
+    [5.2, 1.8],
+    vertical_alignment="center",
+)
 
 with header_content:
     st.markdown(
         """
         <h1 class="mp-header-title">MidiPy Analysis Studio</h1>
         <p class="mp-header-subtitle">
-            Validate MIDI files, configure mappings, analyze performance, and export results.
+            Validate MIDI files, configure mappings, compare performers,
+            and export clear results.
         </p>
         """,
         unsafe_allow_html=True,
@@ -1381,10 +2124,11 @@ with header_actions:
                 """
                 **Workflow**
 
-                1. Upload one or more MIDI files.
-                2. Confirm body-part mappings.
-                3. Choose whole-file or segment analysis.
-                4. Review and export the results.
+                1. Choose a single analysis or comparison.
+                2. Upload the required MIDI files.
+                3. Confirm instrument and note mappings.
+                4. Choose whole-file or segment analysis.
+                5. Review and export the results.
 
                 **Terminology**
 
@@ -1411,6 +2155,59 @@ progress_placeholder = st.empty()
 
 
 # =============================================================================
+# ANALYSIS SETUP
+# =============================================================================
+
+st.markdown(
+    """
+    <h2 class="mp-section-title">Analysis setup</h2>
+    <p class="mp-section-copy">
+        Choose whether to analyze one performer or compare two performer datasets.
+    </p>
+    """,
+    unsafe_allow_html=True,
+)
+
+with st.container(border=True):
+    analysis_design = st.radio(
+        "Would you like to compare a music therapist and a participant?",
+        options=[
+            "Single-performer analysis",
+            "Therapist–participant comparison",
+        ],
+        index=0,
+        horizontal=True,
+        key=f"analysis_design_{analysis_cycle}",
+    )
+
+    comparison_enabled = (
+        analysis_design == "Therapist–participant comparison"
+    )
+
+    if comparison_enabled:
+        st.markdown(
+            """
+            <div class="mp-analysis-mode-note">
+                The same instrument mapping, segment settings, and result measures
+                will be applied to both datasets. This keeps the comparison
+                consistent and easier to interpret.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+            <div class="mp-analysis-mode-note">
+                Analyze one performer or one collection of sessions using the
+                standard MidiPy workflow.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+# =============================================================================
 # 1. UPLOAD
 # =============================================================================
 
@@ -1418,63 +2215,265 @@ st.markdown(
     """
     <h2 class="mp-section-title">1. Upload MIDI files</h2>
     <p class="mp-section-copy">
-        Select all sessions that should be processed together.
+        Add all sessions that should be included in this analysis.
     </p>
     """,
     unsafe_allow_html=True,
 )
 
-with st.container(border=True):
-    uploaded_files = st.file_uploader(
-        "Drag and drop MIDI files or browse",
-        type=["mid", "midi"],
-        accept_multiple_files=True,
-        help="Supported formats: .mid and .midi. Maximum 200 MB per file.",
-        key=f"midi_upload_{analysis_cycle}",
-    )
+uploads_by_role: dict[str, list[Any]] = {}
+prechecks_by_role: dict[str, list[dict[str, Any]]] = {}
+ready_by_role: dict[str, int] = {}
+attention_by_role: dict[str, int] = {}
+size_by_role: dict[str, int] = {}
 
-    precheck_rows, ready_count, total_size = precheck_uploads(uploaded_files)
-    attention_count = len(precheck_rows) - ready_count
+if comparison_enabled:
+    therapist_column, participant_column = st.columns(2, gap="large")
 
-    if uploaded_files:
-        st.markdown(
-            f"""
-            <div class="mp-upload-summary" role="status">
-                <span class="mp-ready"><strong>✓ {ready_count}</strong> file(s) ready</span>
-                <span class="mp-attention"><strong>⚠ {attention_count}</strong> need attention</span>
-                <span><strong>{human_file_size(total_size)}</strong> total</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        with st.expander(
-            "View file details",
-            expanded=attention_count > 0,
-        ):
-            st.dataframe(
-                format_file_status_table(precheck_rows),
-                use_container_width=True,
-                hide_index=True,
+    with therapist_column:
+        with st.container(border=True):
+            st.markdown(
+                """
+                <div class="mp-role-heading">
+                    <span class="mp-role-badge therapist">MT</span>
+                    <span class="mp-role-title">Music therapist</span>
+                </div>
+                <p class="mp-role-copy">
+                    Upload the therapist's MIDI sessions.
+                </p>
+                """,
+                unsafe_allow_html=True,
             )
-    else:
-        st.caption(
-            "No files selected · Supported: MID, MIDI · Maximum 200 MB each"
-        )
 
-    st.caption(
-        "Privacy: use de-identified research files and follow your institution's "
-        "data-handling requirements."
+            therapist_files = st.file_uploader(
+                "Music therapist MIDI files",
+                type=["mid", "midi"],
+                accept_multiple_files=True,
+                help=(
+                    "Supported formats: .mid and .midi. "
+                    "Maximum 200 MB per file."
+                ),
+                key=f"therapist_upload_{analysis_cycle}",
+                label_visibility="collapsed",
+            )
+
+            (
+                therapist_precheck,
+                therapist_ready,
+                therapist_size,
+            ) = precheck_uploads(therapist_files)
+
+            therapist_attention = (
+                len(therapist_precheck) - therapist_ready
+            )
+
+            uploads_by_role[ROLE_THERAPIST] = therapist_files
+            prechecks_by_role[ROLE_THERAPIST] = therapist_precheck
+            ready_by_role[ROLE_THERAPIST] = therapist_ready
+            attention_by_role[ROLE_THERAPIST] = therapist_attention
+            size_by_role[ROLE_THERAPIST] = therapist_size
+
+            if therapist_files:
+                st.markdown(
+                    f"""
+                    <div class="mp-upload-summary" role="status">
+                        <span class="mp-ready">
+                            <strong>✓ {therapist_ready}</strong> ready
+                        </span>
+                        <span class="mp-attention">
+                            <strong>⚠ {therapist_attention}</strong> need attention
+                        </span>
+                        <span>
+                            <strong>{human_file_size(therapist_size)}</strong>
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                with st.expander(
+                    "View therapist file details",
+                    expanded=therapist_attention > 0,
+                ):
+                    st.dataframe(
+                        format_file_status_table(therapist_precheck),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+            else:
+                st.caption("No therapist files selected.")
+
+    with participant_column:
+        with st.container(border=True):
+            st.markdown(
+                """
+                <div class="mp-role-heading">
+                    <span class="mp-role-badge participant">P</span>
+                    <span class="mp-role-title">Participant</span>
+                </div>
+                <p class="mp-role-copy">
+                    Upload the participant's MIDI sessions.
+                </p>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            participant_files = st.file_uploader(
+                "Participant MIDI files",
+                type=["mid", "midi"],
+                accept_multiple_files=True,
+                help=(
+                    "Supported formats: .mid and .midi. "
+                    "Maximum 200 MB per file."
+                ),
+                key=f"participant_upload_{analysis_cycle}",
+                label_visibility="collapsed",
+            )
+
+            (
+                participant_precheck,
+                participant_ready,
+                participant_size,
+            ) = precheck_uploads(participant_files)
+
+            participant_attention = (
+                len(participant_precheck) - participant_ready
+            )
+
+            uploads_by_role[ROLE_PARTICIPANT] = participant_files
+            prechecks_by_role[ROLE_PARTICIPANT] = participant_precheck
+            ready_by_role[ROLE_PARTICIPANT] = participant_ready
+            attention_by_role[ROLE_PARTICIPANT] = participant_attention
+            size_by_role[ROLE_PARTICIPANT] = participant_size
+
+            if participant_files:
+                st.markdown(
+                    f"""
+                    <div class="mp-upload-summary" role="status">
+                        <span class="mp-ready">
+                            <strong>✓ {participant_ready}</strong> ready
+                        </span>
+                        <span class="mp-attention">
+                            <strong>⚠ {participant_attention}</strong> need attention
+                        </span>
+                        <span>
+                            <strong>{human_file_size(participant_size)}</strong>
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                with st.expander(
+                    "View participant file details",
+                    expanded=participant_attention > 0,
+                ):
+                    st.dataframe(
+                        format_file_status_table(participant_precheck),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+            else:
+                st.caption("No participant files selected.")
+
+    st.markdown(
+        """
+        <div class="mp-comparison-callout">
+            Upload at least one valid MIDI file for each performer. The two
+            datasets may contain different numbers of sessions; group-level
+            values will be calculated consistently for comparison.
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-if not uploaded_files:
+else:
+    with st.container(border=True):
+        performer_files = st.file_uploader(
+            "Drag and drop MIDI files or browse",
+            type=["mid", "midi"],
+            accept_multiple_files=True,
+            help=(
+                "Supported formats: .mid and .midi. "
+                "Maximum 200 MB per file."
+            ),
+            key=f"midi_upload_{analysis_cycle}",
+        )
+
+        (
+            performer_precheck,
+            performer_ready,
+            performer_size,
+        ) = precheck_uploads(performer_files)
+
+        performer_attention = (
+            len(performer_precheck) - performer_ready
+        )
+
+        uploads_by_role[ROLE_SINGLE] = performer_files
+        prechecks_by_role[ROLE_SINGLE] = performer_precheck
+        ready_by_role[ROLE_SINGLE] = performer_ready
+        attention_by_role[ROLE_SINGLE] = performer_attention
+        size_by_role[ROLE_SINGLE] = performer_size
+
+        if performer_files:
+            st.markdown(
+                f"""
+                <div class="mp-upload-summary" role="status">
+                    <span class="mp-ready">
+                        <strong>✓ {performer_ready}</strong> file(s) ready
+                    </span>
+                    <span class="mp-attention">
+                        <strong>⚠ {performer_attention}</strong> need attention
+                    </span>
+                    <span>
+                        <strong>{human_file_size(performer_size)}</strong> total
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            with st.expander(
+                "View file details",
+                expanded=performer_attention > 0,
+            ):
+                st.dataframe(
+                    format_file_status_table(performer_precheck),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+        else:
+            st.caption(
+                "No files selected · Supported: MID, MIDI · "
+                "Maximum 200 MB each"
+            )
+
+st.caption(
+    "Privacy: use de-identified research files and follow your institution's "
+    "data-handling requirements."
+)
+
+uploads_ready = (
+    all(ready_by_role.get(role, 0) > 0 for role in uploads_by_role)
+    if uploads_by_role
+    else False
+)
+
+if not uploads_ready:
     with progress_placeholder:
         render_progress_stepper(active_step=1)
+
+    if comparison_enabled:
+        st.info(
+            "Add at least one valid MIDI file for both the music therapist "
+            "and the participant to continue."
+        )
 
     st.markdown(
         """
         <div class="mp-footer">
-            MidiPy Analysis Studio · Human-centred, browser-based MIDI analysis
+            MidiPy Analysis Studio · Human-centred MIDI analysis
         </div>
         """,
         unsafe_allow_html=True,
@@ -1490,13 +2489,28 @@ st.markdown(
     """
     <h2 class="mp-section-title">2. Configure the analysis</h2>
     <p class="mp-section-copy">
-        Defaults are already prepared. Change only what is required for this dataset.
+        Defaults are prepared. Change only what is required for this dataset.
     </p>
     """,
     unsafe_allow_html=True,
 )
 
-mapping_column, scope_column = st.columns([1.15, 1], gap="large")
+if comparison_enabled:
+    st.markdown(
+        """
+        <div class="mp-comparison-callout">
+            These settings apply to both the music therapist and participant.
+            If the performers used different instruments or incompatible note
+            mappings, analyze them separately rather than comparing them directly.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+mapping_column, scope_column = st.columns(
+    [1.15, 1],
+    gap="large",
+)
 
 with mapping_column:
     with st.container(border=True):
@@ -1504,8 +2518,8 @@ with mapping_column:
             """
             <h3 class="mp-card-heading">Instrument and note mapping</h3>
             <p class="mp-card-copy">
-                Foot mappings are needed for drum-set analysis but are optional
-                for guitar and other instruments.
+                Foot mappings are used for drum-set analysis and omitted for
+                guitar or other instruments.
             </p>
             """,
             unsafe_allow_html=True,
@@ -1528,7 +2542,9 @@ with mapping_column:
             options=list(range(128)),
             default=DEFAULT_UE_KEYS,
             placeholder="Search or add a MIDI note number",
-            help="Choose all note numbers assigned to the upper extremities.",
+            help=(
+                "Choose all note numbers assigned to the upper extremities."
+            ),
             key=f"ue_note_values_{analysis_cycle}",
         )
         st.caption(f"{len(ue_keys)} upper-extremity note(s) selected")
@@ -1586,20 +2602,17 @@ with mapping_column:
                 )
             else:
                 st.markdown(
-                    '<div class="mp-inline-ok">✓ No mapping conflicts detected.</div>',
+                    '<div class="mp-inline-ok">'
+                    '✓ No mapping conflicts detected.</div>',
                     unsafe_allow_html=True,
                 )
 
         else:
-            # MidiPy's function signature still accepts LF/RF parameters.
-            # They are retained internally, but all foot-related metrics are
-            # removed from the requested output for non-drum instruments.
             left_foot_key = 44
             right_foot_key = 36
-
             st.info(
-                "Foot mappings and LF/RF result columns are disabled for this "
-                "instrument. Only non-foot measures will be calculated and shown."
+                "Foot mappings and LF/RF measures are disabled for this "
+                "instrument."
             )
 
 with scope_column:
@@ -1608,7 +2621,7 @@ with scope_column:
             """
             <h3 class="mp-card-heading">Analysis scope</h3>
             <p class="mp-card-copy">
-                Choose the level of detail required for this analysis.
+                Choose the level of detail needed for this analysis.
             </p>
             """,
             unsafe_allow_html=True,
@@ -1636,11 +2649,17 @@ with scope_column:
         }
 
         if analysis_mode == "Whole files + segments":
-            st.caption("Recommended · Provides session summaries and change over time.")
+            st.caption(
+                "Recommended · Provides session summaries and change over time."
+            )
         elif analysis_mode == "Whole files only":
-            st.caption("Best for one summary row per complete MIDI session.")
+            st.caption(
+                "Best for one summary row per complete MIDI session."
+            )
         else:
-            st.caption("Best for examining changes across sections of each session.")
+            st.caption(
+                "Best for examining changes across sections of each session."
+            )
 
         if run_segments:
             with st.container(border=True):
@@ -1658,14 +2677,14 @@ with scope_column:
                     "Average matching segments across files",
                     value=False,
                     help=(
-                        "Combines all Segment 1 rows, all Segment 2 rows, and so on."
+                        "Combines all Segment 1 rows, all Segment 2 rows, "
+                        "and so on."
                     ),
                     key=f"average_segments_{analysis_cycle}",
                 )
         else:
             number_of_segments = 5
             average_segments = False
-
 
 with st.container(border=True):
     st.markdown(
@@ -1701,11 +2720,12 @@ with st.container(border=True):
 
         if include_feet:
             st.caption(
-                "12 measures selected · note counts, velocity, and asynchrony"
+                "12 measures selected · counts, velocity, and asynchrony"
             )
         else:
             st.caption(
-                "6 non-foot measures selected · counts, velocity, and asynchrony"
+                "6 non-foot measures selected · counts, velocity, "
+                "and asynchrony"
             )
 
     elif result_preset == "Counts only":
@@ -1736,10 +2756,11 @@ with st.container(border=True):
 
 
 # =============================================================================
-# SETTINGS, STALE-RESULT CHECK, AND STICKY PRIMARY ACTION
+# SETTINGS AND STICKY PRIMARY ACTION
 # =============================================================================
 
 current_settings = {
+    "analysis_design": analysis_design,
     "instrument_mode": instrument_mode,
     "include_feet": include_feet,
     "ue_keys": ue_keys,
@@ -1751,8 +2772,12 @@ current_settings = {
     "selected_metrics": selected_metrics,
 }
 
-current_upload_signature = upload_signature(uploaded_files)
-current_settings_signature = settings_signature(current_settings)
+current_upload_signature = combined_upload_signature(
+    uploads_by_role
+)
+current_settings_signature = settings_signature(
+    current_settings
+)
 
 existing_results = st.session_state.get("midipy_results")
 existing_upload_signature = st.session_state.get(
@@ -1769,29 +2794,45 @@ existing_results_are_current = (
 )
 
 with st.container(border=True):
-    st.markdown('<div class="mp-sticky-marker"></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="mp-sticky-marker"></div>',
+        unsafe_allow_html=True,
+    )
+
     action_information, action_button = st.columns(
         [4, 1.45],
         vertical_alignment="center",
     )
 
     with action_information:
-        status_parts = [f"{ready_count} file(s) ready"]
-        if attention_count:
-            status_parts.append(f"{attention_count} will be skipped")
-        status_parts.append(f"{len(selected_metrics)} measure(s)")
-        st.markdown("**" + " · ".join(status_parts) + "**")
+        if comparison_enabled:
+            status_text = (
+                f"{ready_by_role[ROLE_THERAPIST]} therapist file(s) ready · "
+                f"{ready_by_role[ROLE_PARTICIPANT]} participant file(s) ready · "
+                f"{len(selected_metrics)} measure(s)"
+            )
+        else:
+            status_text = (
+                f"{ready_by_role[ROLE_SINGLE]} file(s) ready · "
+                f"{len(selected_metrics)} measure(s)"
+            )
+
+        st.markdown(f"**{status_text}**")
         st.caption(
-            "The complete MIDI validation runs when analysis begins."
+            "Complete MIDI validation runs when analysis begins."
         )
 
     with action_button:
         submitted = st.button(
-            "Analyze MIDI files",
+            (
+                "Run comparison"
+                if comparison_enabled
+                else "Analyze MIDI files"
+            ),
             type="primary",
             use_container_width=True,
             disabled=(
-                ready_count == 0
+                not uploads_ready
                 or not ue_keys
                 or not selected_metrics
             ),
@@ -1814,47 +2855,18 @@ if submitted:
         render_progress_stepper(active_step=3)
 
     with st.status(
-        "Preparing the analysis…",
+        (
+            "Preparing the comparison…"
+            if comparison_enabled
+            else "Preparing the analysis…"
+        ),
         expanded=True,
     ) as analysis_status:
         try:
-            analysis_status.write("Creating a clean temporary workspace.")
-
             with tempfile.TemporaryDirectory(
                 prefix="midipy_dashboard_"
             ) as temporary:
                 temporary_path = Path(temporary)
-                midi_folder = temporary_path / "validated_midi"
-                midi_folder.mkdir()
-
-                analysis_status.write(
-                    "Validating MIDI headers, notes, and tempo information."
-                )
-                valid_names, skipped_files = validate_and_save_uploads(
-                    uploaded_files,
-                    midi_folder,
-                )
-
-                if not valid_names:
-                    clear_analysis_state()
-                    analysis_status.update(
-                        label="No usable MIDI files were found.",
-                        state="error",
-                        expanded=True,
-                    )
-                    st.error(
-                        "None of the selected files passed complete MIDI validation."
-                    )
-                    if skipped_files:
-                        st.dataframe(
-                            pd.DataFrame(
-                                skipped_files,
-                                columns=["File", "Reason"],
-                            ),
-                            use_container_width=True,
-                            hide_index=True,
-                        )
-                    st.stop()
 
                 metrics_argument = (
                     ["all"]
@@ -1862,61 +2874,114 @@ if submitted:
                         include_feet
                         and set(selected_metrics) == set(AVAILABLE_METRICS)
                     )
-                    else selected_metrics
+                    else ["Name", *selected_metrics]
                 )
 
-                results: dict[str, pd.DataFrame] = {}
+                datasets: dict[
+                    str,
+                    dict[str, pd.DataFrame],
+                ] = {}
+                valid_names_by_role: dict[str, list[str]] = {}
+                skipped_files_by_role: dict[
+                    str,
+                    list[tuple[str, str]],
+                ] = {}
 
-                if run_whole:
+                for role, uploaded_files in uploads_by_role.items():
+                    role_slug = re.sub(
+                        r"[^a-z0-9]+",
+                        "_",
+                        role.lower(),
+                    ).strip("_")
+
                     analysis_status.write(
-                        f"Computing whole-file measures for {len(valid_names)} file(s)."
+                        f"Validating and analyzing {role.lower()} files."
                     )
-                    whole_df = parser(
-                        source=str(midi_folder),
-                        metrics=metrics_argument,
-                        output_format="csv",
-                        save_path=str(temporary_path / "whole_results"),
+
+                    (
+                        dataset_results,
+                        valid_names,
+                        skipped_files,
+                    ) = run_dataset_analysis(
+                        uploaded_files=uploaded_files,
+                        temporary_path=temporary_path,
+                        dataset_slug=role_slug,
+                        metrics_argument=metrics_argument,
+                        run_whole=run_whole,
+                        run_segments=run_segments,
+                        number_of_segments=number_of_segments,
+                        average_segments=average_segments,
                         ue_keys=ue_keys,
-                        lf_key=left_foot_key,
-                        rf_key=right_foot_key,
-                    )
-                    results["Whole_File_Results"] = whole_df
-
-                if run_segments:
-                    analysis_status.write(
-                        f"Computing {number_of_segments} segment(s) per file."
-                    )
-                    segment_df = parser_segments(
-                        source=str(midi_folder),
-                        metrics=metrics_argument,
-                        output_format="csv",
-                        save_path=str(temporary_path / "segment_results"),
-                        num_segments=number_of_segments,
-                        mean_segments=False,
-                        ue_keys=ue_keys,
-                        lf_key=left_foot_key,
-                        rf_key=right_foot_key,
+                        left_foot_key=left_foot_key,
+                        right_foot_key=right_foot_key,
                     )
 
-                    if average_segments:
-                        segment_df = average_segment_rows(segment_df)
+                    if not valid_names:
+                        clear_analysis_state()
+                        analysis_status.update(
+                            label=(
+                                f"No usable {role.lower()} MIDI files "
+                                "were found."
+                            ),
+                            state="error",
+                            expanded=True,
+                        )
+                        st.error(
+                            f"None of the {role.lower()} files passed "
+                            "complete MIDI validation."
+                        )
 
-                    results["Segment_Results"] = segment_df
+                        if skipped_files:
+                            st.dataframe(
+                                pd.DataFrame(
+                                    skipped_files,
+                                    columns=["File", "Reason"],
+                                ),
+                                use_container_width=True,
+                                hide_index=True,
+                            )
 
-                st.session_state["midipy_results"] = results
-                st.session_state["midipy_valid_names"] = valid_names
-                st.session_state["midipy_skipped_files"] = skipped_files
+                        st.stop()
+
+                    datasets[role] = dataset_results
+                    valid_names_by_role[role] = valid_names
+                    skipped_files_by_role[role] = skipped_files
+
+                analysis_payload = {
+                    "mode": (
+                        "comparison"
+                        if comparison_enabled
+                        else "single"
+                    ),
+                    "datasets": datasets,
+                }
+
+                st.session_state["midipy_results"] = analysis_payload
+                st.session_state[
+                    "midipy_valid_names"
+                ] = valid_names_by_role
+                st.session_state[
+                    "midipy_skipped_files"
+                ] = skipped_files_by_role
                 st.session_state[
                     "midipy_analysis_signature"
                 ] = current_upload_signature
                 st.session_state[
                     "midipy_analysis_settings_signature"
                 ] = current_settings_signature
-                st.session_state["midipy_last_settings"] = current_settings
+                st.session_state[
+                    "midipy_last_settings"
+                ] = current_settings
+
+                total_processed = sum(
+                    len(names)
+                    for names in valid_names_by_role.values()
+                )
 
                 analysis_status.update(
                     label=(
-                        f"Analysis complete — {len(valid_names)} file(s) processed."
+                        f"Analysis complete — "
+                        f"{total_processed} file(s) processed."
                     ),
                     state="complete",
                     expanded=False,
@@ -1940,6 +3005,7 @@ if submitted:
                 - Confirm that mappings use values from 0 to 127.
                 """
             )
+
             with st.expander("Technical details for support"):
                 st.code(str(error))
 
@@ -1948,7 +3014,7 @@ if submitted:
 # 4. REVIEW AND EXPORT
 # =============================================================================
 
-results = st.session_state.get("midipy_results")
+analysis_payload = st.session_state.get("midipy_results")
 stored_upload_signature = st.session_state.get(
     "midipy_analysis_signature"
 )
@@ -1957,7 +3023,7 @@ stored_settings_signature = st.session_state.get(
 )
 
 results_are_current = (
-    bool(results)
+    bool(analysis_payload)
     and stored_upload_signature == current_upload_signature
     and stored_settings_signature == current_settings_signature
 )
@@ -1967,18 +3033,47 @@ with progress_placeholder:
         active_step=4 if results_are_current else 2
     )
 
-if results and results_are_current:
-    valid_names = st.session_state.get("midipy_valid_names", [])
-    skipped_files = st.session_state.get("midipy_skipped_files", [])
+if analysis_payload and results_are_current:
+    datasets = analysis_payload["datasets"]
+    valid_names_by_role = st.session_state.get(
+        "midipy_valid_names",
+        {},
+    )
+    skipped_files_by_role = st.session_state.get(
+        "midipy_skipped_files",
+        {},
+    )
 
-    excel_bytes = dataframe_to_excel_bytes(results)
-    csv_zip_bytes = dataframes_to_csv_zip(results)
+    comparison_summary = pd.DataFrame()
+
+    if comparison_enabled:
+        comparison_summary = build_comparison_summary(
+            datasets[ROLE_THERAPIST],
+            datasets[ROLE_PARTICIPANT],
+            selected_metrics,
+        )
+
+    export_tables = comparison_export_tables(
+        datasets,
+        comparison_summary,
+    )
+    excel_bytes = dataframe_to_excel_bytes(export_tables)
+    csv_zip_bytes = dataframes_to_csv_zip(export_tables)
+
+    total_processed = sum(
+        len(names)
+        for names in valid_names_by_role.values()
+    )
+    total_skipped = sum(
+        len(items)
+        for items in skipped_files_by_role.values()
+    )
 
     st.markdown(
         f"""
         <div class="mp-results-banner" role="status">
-            ✓ Analysis completed · {len(valid_names)} file(s) processed ·
-            {len(skipped_files)} skipped
+            ✓ Analysis completed · {total_processed} file(s) processed ·
+            {total_skipped} skipped
         </div>
         """,
         unsafe_allow_html=True,
@@ -1994,7 +3089,7 @@ if results and results_are_current:
             """
             <h2 class="mp-section-title">4. Review results</h2>
             <p class="mp-section-copy">
-                Start with the overview, then inspect the detailed tables.
+                Review the comparison and the underlying performer data.
             </p>
             """,
             unsafe_allow_html=True,
@@ -2002,157 +3097,251 @@ if results and results_are_current:
 
     with download_actions:
         excel_column, csv_column = st.columns(2)
+
         with excel_column:
             st.download_button(
                 "Download Excel",
                 data=excel_bytes,
-                file_name="MidiPy_Results.xlsx",
+                file_name=(
+                    "MidiPy_Comparison.xlsx"
+                    if comparison_enabled
+                    else "MidiPy_Results.xlsx"
+                ),
                 mime=(
                     "application/vnd.openxmlformats-officedocument."
                     "spreadsheetml.sheet"
                 ),
                 use_container_width=True,
             )
+
         with csv_column:
             st.download_button(
                 "Download CSV",
                 data=csv_zip_bytes,
-                file_name="MidiPy_CSV_Results.zip",
+                file_name=(
+                    "MidiPy_Comparison_CSV.zip"
+                    if comparison_enabled
+                    else "MidiPy_CSV_Results.zip"
+                ),
                 mime="application/zip",
                 use_container_width=True,
             )
 
-    whole_dataframe = results.get("Whole_File_Results")
-    if whole_dataframe is not None:
-        summary = result_summary(whole_dataframe)
-
-        if include_feet:
-            summary_columns = st.columns(5)
-            summary_columns[0].metric(
-                "Files analyzed",
-                int(summary["files"] or len(valid_names)),
-            )
-            summary_columns[1].metric(
-                "Total notes",
-                f"{int(summary['total']):,}"
-                if summary["total"] is not None
-                else "—",
-            )
-            summary_columns[2].metric(
-                "UE notes",
-                f"{int(summary['ue']):,}"
-                if summary["ue"] is not None
-                else "—",
-            )
-            summary_columns[3].metric(
-                "LF notes",
-                f"{int(summary['lf']):,}"
-                if summary["lf"] is not None
-                else "—",
-            )
-            summary_columns[4].metric(
-                "RF notes",
-                f"{int(summary['rf']):,}"
-                if summary["rf"] is not None
-                else "—",
-            )
-
-        else:
-            summary_columns = st.columns(3)
-            summary_columns[0].metric(
-                "Files analyzed",
-                int(summary["files"] or len(valid_names)),
-            )
-            summary_columns[1].metric(
-                "Total notes",
-                f"{int(summary['total']):,}"
-                if summary["total"] is not None
-                else "—",
-            )
-            summary_columns[2].metric(
-                "UE notes",
-                f"{int(summary['ue']):,}"
-                if summary["ue"] is not None
-                else "—",
-            )
-    else:
-        summary_columns = st.columns(3)
-        summary_columns[0].metric("Files analyzed", len(valid_names))
-        summary_columns[1].metric(
-            "Segment rows",
-            len(results.get("Segment_Results", [])),
+    if comparison_enabled:
+        therapist_valid = valid_names_by_role.get(
+            ROLE_THERAPIST,
+            [],
         )
-        summary_columns[2].metric("Files skipped", len(skipped_files))
-
-    overview_tab, data_tab, quality_tab = st.tabs(
-        ["Overview", "Detailed data", "File quality"]
-    )
-
-    with overview_tab:
-        result_options = list(results.keys())
-        selected_result_name = st.radio(
-            "Result set",
-            options=result_options,
-            horizontal=True,
-            format_func=lambda name: (
-                "Whole-file results"
-                if name == "Whole_File_Results"
-                else "Segment results"
-            ),
-            key=f"result_set_{analysis_cycle}",
+        participant_valid = valid_names_by_role.get(
+            ROLE_PARTICIPANT,
+            [],
         )
 
-        render_result_chart(
-            results[selected_result_name],
-            selected_result_name,
+        st.markdown(
+            f"""
+            <div class="mp-comparison-banner">
+                <div>
+                    <small>Music therapist</small>
+                    <strong>{len(therapist_valid)} file(s) analyzed</strong>
+                </div>
+                <div>
+                    <small>Participant</small>
+                    <strong>{len(participant_valid)} file(s) analyzed</strong>
+                </div>
+                <div>
+                    <small>Shared measures</small>
+                    <strong>{len(comparison_summary)} available</strong>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
+
+        st.subheader("Comparison overview")
         st.caption(
-            "Velocity and asynchrony charts use the mean shown before "
-            "the standard deviation in parentheses."
+            "Count measures are summed across files. Velocity and asynchrony "
+            "measures are averaged. Differences are calculated as "
+            "participant minus music therapist."
         )
 
-    with data_tab:
-        for result_name, dataframe in results.items():
-            label = (
-                "Whole-file results"
-                if result_name == "Whole_File_Results"
-                else "Segment results"
-            )
-            with st.expander(label, expanded=len(results) == 1):
-                display_dataframe(dataframe)
-                st.caption(
-                    f"{len(dataframe):,} row(s) × "
-                    f"{len(dataframe.columns):,} column(s)"
+        comparison_chart_column, comparison_table_column = st.columns(
+            [1, 1.25],
+            gap="large",
+        )
+
+        with comparison_chart_column:
+            render_comparison_chart(comparison_summary)
+
+        with comparison_table_column:
+            if not comparison_summary.empty:
+                display_comparison = comparison_summary.drop(
+                    columns=["Metric key"],
+                    errors="ignore",
                 )
-
-    with quality_tab:
-        quality_left, quality_right = st.columns(2)
-
-        with quality_left:
-            st.markdown("**Successfully analyzed**")
-            for filename in valid_names:
-                st.write(f"✓ {filename}")
-
-        with quality_right:
-            st.markdown("**Skipped during validation**")
-            if skipped_files:
                 st.dataframe(
-                    pd.DataFrame(
-                        skipped_files,
-                        columns=["File", "Reason"],
-                    ),
+                    display_comparison,
                     use_container_width=True,
                     hide_index=True,
+                    column_config={
+                        ROLE_THERAPIST: st.column_config.NumberColumn(
+                            ROLE_THERAPIST,
+                            format="%.2f",
+                        ),
+                        ROLE_PARTICIPANT: st.column_config.NumberColumn(
+                            ROLE_PARTICIPANT,
+                            format="%.2f",
+                        ),
+                        "Difference": st.column_config.NumberColumn(
+                            "Participant − therapist",
+                            format="%.2f",
+                        ),
+                        "Relative difference (%)": (
+                            st.column_config.NumberColumn(
+                                "Relative difference",
+                                format="%.1f%%",
+                            )
+                        ),
+                    },
                 )
             else:
-                st.write("✓ No files were skipped.")
+                st.info(
+                    "No shared whole-file or segment measures are available."
+                )
 
-        st.info(
-            "Files are processed in a temporary workspace that is removed "
-            "after the analysis finishes."
+        st.markdown(
+            """
+            <p class="mp-neutral-note">
+                A higher or lower value is not automatically better. Interpretation
+                depends on the measure, instrument, therapeutic goal, and session context.
+            </p>
+            """,
+            unsafe_allow_html=True,
         )
 
-elif not results:
+        render_segment_comparison(
+            datasets[ROLE_THERAPIST],
+            datasets[ROLE_PARTICIPANT],
+            selected_metrics,
+        )
+
+        st.subheader("Individual performer results")
+        therapist_tab, participant_tab = st.tabs(
+            [ROLE_THERAPIST, ROLE_PARTICIPANT]
+        )
+
+        with therapist_tab:
+            render_dataset_details(
+                role=ROLE_THERAPIST,
+                dataset_results=datasets[ROLE_THERAPIST],
+                valid_names=valid_names_by_role.get(
+                    ROLE_THERAPIST,
+                    [],
+                ),
+                skipped_files=skipped_files_by_role.get(
+                    ROLE_THERAPIST,
+                    [],
+                ),
+                include_feet=include_feet,
+            )
+
+        with participant_tab:
+            render_dataset_details(
+                role=ROLE_PARTICIPANT,
+                dataset_results=datasets[ROLE_PARTICIPANT],
+                valid_names=valid_names_by_role.get(
+                    ROLE_PARTICIPANT,
+                    [],
+                ),
+                skipped_files=skipped_files_by_role.get(
+                    ROLE_PARTICIPANT,
+                    [],
+                ),
+                include_feet=include_feet,
+            )
+
+    else:
+        single_results = datasets[ROLE_SINGLE]
+
+        overview_tab, data_tab, quality_tab = st.tabs(
+            ["Overview", "Detailed data", "File quality"]
+        )
+
+        with overview_tab:
+            render_dataset_summary(
+                single_results,
+                valid_names_by_role.get(ROLE_SINGLE, []),
+                skipped_files_by_role.get(ROLE_SINGLE, []),
+                include_feet,
+            )
+
+            result_options = list(single_results.keys())
+            selected_result_name = st.radio(
+                "Result set",
+                options=result_options,
+                horizontal=True,
+                format_func=lambda name: (
+                    "Whole-file results"
+                    if name == "Whole_File_Results"
+                    else "Segment results"
+                ),
+                key=f"result_set_single_{analysis_cycle}",
+            )
+
+            render_result_chart(
+                single_results[selected_result_name],
+                selected_result_name,
+                key_prefix="single",
+            )
+
+        with data_tab:
+            for result_name, dataframe in single_results.items():
+                label = (
+                    "Whole-file results"
+                    if result_name == "Whole_File_Results"
+                    else "Segment results"
+                )
+
+                with st.expander(
+                    label,
+                    expanded=len(single_results) == 1,
+                ):
+                    display_dataframe(dataframe)
+                    st.caption(
+                        f"{len(dataframe):,} row(s) × "
+                        f"{len(dataframe.columns):,} column(s)"
+                    )
+
+        with quality_tab:
+            quality_left, quality_right = st.columns(2)
+
+            with quality_left:
+                st.markdown("**Successfully analyzed**")
+                for filename in valid_names_by_role.get(
+                    ROLE_SINGLE,
+                    [],
+                ):
+                    st.write(f"✓ {filename}")
+
+            with quality_right:
+                st.markdown("**Skipped during validation**")
+                single_skipped = skipped_files_by_role.get(
+                    ROLE_SINGLE,
+                    [],
+                )
+
+                if single_skipped:
+                    st.dataframe(
+                        pd.DataFrame(
+                            single_skipped,
+                            columns=["File", "Reason"],
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.write("✓ No files were skipped.")
+
+else:
     st.info(
         "The results area will appear after the MIDI files have been analyzed."
     )
@@ -2161,7 +3350,7 @@ elif not results:
 st.markdown(
     """
     <div class="mp-footer">
-        MidiPy Analysis Studio · Clear, guided, and error-tolerant MIDI analysis
+        MidiPy Analysis Studio · Clear, guided, and neutral performer comparison
     </div>
     """,
     unsafe_allow_html=True,
