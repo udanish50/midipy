@@ -132,6 +132,8 @@ if "analysis_cycle" not in st.session_state:
 
 analysis_cycle = int(st.session_state["analysis_cycle"])
 
+APP_SCHEMA_VERSION = "6.0"
+
 
 
 # =============================================================================
@@ -708,6 +710,121 @@ st.markdown(
         }
     }
 
+    
+
+    /* Primary workflow selector */
+    .mp-mode-intro {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .mp-mode-kicker {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        padding: 0.2rem 0.58rem;
+        border: 1px solid #d6e0f7;
+        border-radius: 999px;
+        background: #f3f6ff;
+        color: #3152ba;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.035em;
+        text-transform: uppercase;
+    }
+
+    .mp-mode-selector-copy {
+        margin: 0.35rem 0 0;
+        color: #58667c;
+        font-size: 0.91rem;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-mode-selector-marker) {
+        padding: 1.05rem 1.1rem 1rem;
+        border-color: #d7e0f1 !important;
+        background:
+            radial-gradient(circle at 94% 8%, rgba(49, 87, 213, 0.08), transparent 15rem),
+            #ffffff !important;
+        box-shadow: 0 12px 30px rgba(31, 47, 86, 0.075);
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-mode-selector-marker)
+    [data-testid="stRadio"] div[role="radiogroup"] > label {
+        min-height: 76px;
+        padding: 0.9rem 1rem;
+        align-items: center;
+        border-width: 1.5px;
+        border-radius: 14px;
+        font-size: 0.96rem;
+        font-weight: 760;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-mode-selector-marker)
+    [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {
+        border-color: #3157d5;
+        background: linear-gradient(135deg, #f0f4ff, #f7f9ff);
+        box-shadow: 0 0 0 3px rgba(49, 87, 213, 0.09);
+    }
+
+    .mp-mode-summary {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0.65rem;
+        align-items: start;
+        margin-top: 0.75rem;
+        padding: 0.78rem 0.86rem;
+        border: 1px solid #dce4f4;
+        border-radius: 12px;
+        background: #f8faff;
+        color: #42516b;
+        font-size: 0.88rem;
+    }
+
+    .mp-mode-summary-icon {
+        display: inline-grid;
+        width: 1.8rem;
+        height: 1.8rem;
+        place-items: center;
+        border-radius: 9px;
+        background: #e9efff;
+        color: #3157d5;
+        font-weight: 850;
+    }
+
+    .mp-calculation-note {
+        margin: 0.15rem 0 0.85rem;
+        padding: 0.72rem 0.82rem;
+        border: 1px solid #cfe0f8;
+        border-left: 4px solid #3157d5;
+        border-radius: 10px;
+        background: #f6f9ff;
+        color: #3e4e69;
+        font-size: 0.86rem;
+    }
+
+    .mp-selection-summary {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.45rem 0.8rem;
+        margin-top: 0.55rem;
+        color: #5d6a7f;
+        font-size: 0.84rem;
+    }
+
+    .mp-selection-summary strong {
+        color: #243552;
+    }
+
+    .mp-config-tabs-note {
+        margin: 0.75rem 0 1rem;
+        color: #5b6880;
+        font-size: 0.87rem;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -928,7 +1045,7 @@ def average_segment_rows(segment_df: pd.DataFrame) -> pd.DataFrame:
     if "Name" not in segment_df.columns:
         return segment_df
 
-    working = segment_df.copy()
+    working = sanitize_result_dataframe(segment_df)
     working["Segment_Number"] = pd.to_numeric(
         working["Name"]
         .astype(str)
@@ -1041,7 +1158,7 @@ def dataframes_to_csv_zip(sheets: dict[str, pd.DataFrame]) -> bytes:
 
 def result_summary(dataframe: pd.DataFrame) -> dict[str, float | None]:
     """Create meaningful high-level values from whole-file results."""
-    data = dataframe.copy()
+    data = sanitize_result_dataframe(dataframe)
 
     if "Name" in data.columns:
         totals_rows = data[
@@ -1085,7 +1202,7 @@ def result_summary(dataframe: pd.DataFrame) -> dict[str, float | None]:
 
 def chartable_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
     """Convert display-formatted result fields into chartable mean values."""
-    output = dataframe.copy()
+    output = sanitize_result_dataframe(dataframe)
 
     for column in output.columns:
         if column == "Name":
@@ -1470,36 +1587,38 @@ def selected_custom_metrics(
     include_feet: bool,
     key_prefix: str = "single",
 ) -> list[str]:
-    """Show only measures relevant to one performer's instrument."""
-    selected: list[str] = []
-    group_columns = st.columns(3)
+    """Choose which already-calculated measures should be displayed."""
+    available_metrics = (
+        AVAILABLE_METRICS
+        if include_feet
+        else NON_FOOT_METRICS
+    )
 
-    for column, (group_name, metrics) in zip(
-        group_columns,
-        METRIC_GROUPS.items(),
-    ):
-        visible_metrics = [
-            metric
-            for metric in metrics
-            if include_feet or metric not in FOOT_METRICS
-        ]
+    selected = st.multiselect(
+        "Measures to show",
+        options=available_metrics,
+        default=available_metrics,
+        format_func=lambda metric: METRIC_LABELS.get(metric, metric),
+        placeholder="Choose one or more measures",
+        help=(
+            "MidiPy calculates the complete metric set. This selection "
+            "controls only what appears in the dashboard and downloads."
+        ),
+        key=(
+            f"{key_prefix}_{'with_feet' if include_feet else 'no_feet'}_"
+            f"visible_metrics_{analysis_cycle}"
+        ),
+    )
 
-        with column:
-            st.markdown(f"**{group_name}**")
-
-            for metric in visible_metrics:
-                checked = st.checkbox(
-                    METRIC_LABELS[metric],
-                    value=True,
-                    help=METRIC_HELP.get(metric),
-                    key=(
-                        f"{key_prefix}_metric_{metric}_"
-                        f"{analysis_cycle}"
-                    ),
-                )
-
-                if checked:
-                    selected.append(metric)
+    st.markdown(
+        f"""
+        <div class="mp-selection-summary">
+            <span><strong>{len(selected)}</strong> of {len(available_metrics)} shown</span>
+            <span>All MidiPy measures are still calculated internally.</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     return selected
 
@@ -1515,12 +1634,75 @@ def combined_upload_signature(
     return settings_signature(role_signatures)
 
 
+
+def sanitize_result_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Return a safe result table with unique columns and stable ordering."""
+    if not isinstance(dataframe, pd.DataFrame):
+        raise TypeError("MidiPy did not return a pandas DataFrame.")
+
+    sanitized = dataframe.loc[
+        :,
+        ~dataframe.columns.duplicated(),
+    ].copy()
+
+    return sanitized
+
+
+def filter_dataframe_for_display(
+    dataframe: pd.DataFrame,
+    selected_metrics: list[str],
+) -> pd.DataFrame:
+    """Hide unselected measures without changing MidiPy calculation."""
+    sanitized = sanitize_result_dataframe(dataframe)
+
+    keep_columns: list[str] = []
+
+    if "Name" in sanitized.columns:
+        keep_columns.append("Name")
+
+    if "Segment_Number" in sanitized.columns:
+        keep_columns.append("Segment_Number")
+
+    keep_columns.extend(
+        metric
+        for metric in selected_metrics
+        if metric in sanitized.columns
+        and metric not in keep_columns
+    )
+
+    return sanitized.loc[:, keep_columns].copy()
+
+
+def filter_results_for_display(
+    dataset_results: dict[str, pd.DataFrame],
+    selected_metrics: list[str],
+) -> dict[str, pd.DataFrame]:
+    return {
+        result_name: filter_dataframe_for_display(
+            dataframe,
+            selected_metrics,
+        )
+        for result_name, dataframe in dataset_results.items()
+    }
+
+
+def format_summary_metric(
+    metric: str,
+    value: float | None,
+) -> str:
+    if value is None:
+        return "—"
+
+    if metric in COUNT_METRICS:
+        return f"{int(round(value)):,}"
+
+    return f"{value:,.2f}"
+
 def run_dataset_analysis(
     *,
     uploaded_files: list[Any],
     temporary_path: Path,
     dataset_slug: str,
-    metrics_argument: list[str],
     run_whole: bool,
     run_segments: bool,
     number_of_segments: int,
@@ -1550,7 +1732,7 @@ def run_dataset_analysis(
     if run_whole:
         whole_df = parser(
             source=str(midi_folder),
-            metrics=metrics_argument,
+            metrics=["all"],
             output_format="csv",
             save_path=str(
                 temporary_path / f"{dataset_slug}_whole_results"
@@ -1559,12 +1741,12 @@ def run_dataset_analysis(
             lf_key=left_foot_key,
             rf_key=right_foot_key,
         )
-        results["Whole_File_Results"] = whole_df
+        results["Whole_File_Results"] = sanitize_result_dataframe(whole_df)
 
     if run_segments:
         segment_df = parser_segments(
             source=str(midi_folder),
-            metrics=metrics_argument,
+            metrics=["all"],
             output_format="csv",
             save_path=str(
                 temporary_path / f"{dataset_slug}_segment_results"
@@ -1579,7 +1761,7 @@ def run_dataset_analysis(
         if average_segments:
             segment_df = average_segment_rows(segment_df)
 
-        results["Segment_Results"] = segment_df
+        results["Segment_Results"] = sanitize_result_dataframe(segment_df)
 
     return results, valid_names, skipped_files
 
@@ -1592,7 +1774,7 @@ def aggregate_metric_value(
     if metric not in dataframe.columns:
         return None
 
-    working = dataframe.copy()
+    working = sanitize_result_dataframe(dataframe)
 
     if "Name" in working.columns:
         totals = working[
@@ -1703,6 +1885,7 @@ def build_comparison_summary(
 
 def comparison_export_tables(
     datasets: dict[str, dict[str, pd.DataFrame]],
+    configurations: dict[str, dict[str, Any]],
     comparison_summary: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
     export_tables: dict[str, pd.DataFrame] = {}
@@ -1715,8 +1898,13 @@ def comparison_export_tables(
 
     for role, dataset_results in datasets.items():
         prefix = role_prefixes.get(role, role)
+        selected_metrics = configurations[role]["selected_metrics"]
+        visible_results = filter_results_for_display(
+            dataset_results,
+            selected_metrics,
+        )
 
-        for result_name, dataframe in dataset_results.items():
+        for result_name, dataframe in visible_results.items():
             result_suffix = (
                 "Whole"
                 if result_name == "Whole_File_Results"
@@ -1986,69 +2174,42 @@ def render_dataset_summary(
     dataset_results: dict[str, pd.DataFrame],
     valid_names: list[str],
     skipped_files: list[tuple[str, str]],
-    include_feet: bool,
+    selected_metrics: list[str],
 ) -> None:
-    whole_dataframe = dataset_results.get("Whole_File_Results")
+    summary_dataframe = (
+        dataset_results.get("Whole_File_Results")
+        if "Whole_File_Results" in dataset_results
+        else dataset_results.get("Segment_Results")
+    )
 
-    if whole_dataframe is not None:
-        summary = result_summary(whole_dataframe)
-
-        if include_feet:
-            columns = st.columns(5)
-            columns[0].metric(
-                "Files analyzed",
-                int(summary["files"] or len(valid_names)),
-            )
-            columns[1].metric(
-                "Total notes",
-                f"{int(summary['total']):,}"
-                if summary["total"] is not None
-                else "—",
-            )
-            columns[2].metric(
-                "UE notes",
-                f"{int(summary['ue']):,}"
-                if summary["ue"] is not None
-                else "—",
-            )
-            columns[3].metric(
-                "LF notes",
-                f"{int(summary['lf']):,}"
-                if summary["lf"] is not None
-                else "—",
-            )
-            columns[4].metric(
-                "RF notes",
-                f"{int(summary['rf']):,}"
-                if summary["rf"] is not None
-                else "—",
-            )
-        else:
-            columns = st.columns(3)
-            columns[0].metric(
-                "Files analyzed",
-                int(summary["files"] or len(valid_names)),
-            )
-            columns[1].metric(
-                "Total notes",
-                f"{int(summary['total']):,}"
-                if summary["total"] is not None
-                else "—",
-            )
-            columns[2].metric(
-                "UE notes",
-                f"{int(summary['ue']):,}"
-                if summary["ue"] is not None
-                else "—",
-            )
-    else:
-        columns = st.columns(3)
-        columns[0].metric("Files analyzed", len(valid_names))
-        columns[1].metric(
-            "Segment rows",
-            len(dataset_results.get("Segment_Results", [])),
+    metric_candidates = [
+        metric
+        for metric in selected_metrics
+        if (
+            summary_dataframe is not None
+            and metric in summary_dataframe.columns
         )
-        columns[2].metric("Files skipped", len(skipped_files))
+    ][:4]
+
+    columns = st.columns(1 + len(metric_candidates))
+    columns[0].metric("Files analyzed", len(valid_names))
+
+    if summary_dataframe is not None:
+        for column, metric in zip(columns[1:], metric_candidates):
+            value = aggregate_metric_value(
+                summary_dataframe,
+                metric,
+            )
+            column.metric(
+                METRIC_LABELS.get(metric, metric),
+                format_summary_metric(metric, value),
+            )
+
+    if not metric_candidates:
+        st.caption(
+            f"{len(selected_metrics)} measure(s) selected for detailed display · "
+            f"{len(skipped_files)} file(s) skipped"
+        )
 
 
 def render_dataset_details(
@@ -2057,20 +2218,24 @@ def render_dataset_details(
     dataset_results: dict[str, pd.DataFrame],
     valid_names: list[str],
     skipped_files: list[tuple[str, str]],
-    include_feet: bool,
+    selected_metrics: list[str],
 ) -> None:
     role_key = re.sub(r"[^a-z0-9]+", "_", role.lower()).strip("_")
+    visible_results = filter_results_for_display(
+        dataset_results,
+        selected_metrics,
+    )
 
     render_dataset_summary(
         dataset_results,
         valid_names,
         skipped_files,
-        include_feet,
+        selected_metrics,
     )
 
     st.subheader("Visual overview")
 
-    result_options = list(dataset_results.keys())
+    result_options = list(visible_results.keys())
     selected_result_name = st.radio(
         "Result set",
         options=result_options,
@@ -2084,25 +2249,25 @@ def render_dataset_details(
     )
 
     render_result_chart(
-        dataset_results[selected_result_name],
+        visible_results[selected_result_name],
         selected_result_name,
         key_prefix=role_key,
     )
 
     st.subheader("Detailed data")
 
-    for result_name, dataframe in dataset_results.items():
+    for result_name, dataframe in visible_results.items():
         label = (
             "Whole-file results"
             if result_name == "Whole_File_Results"
             else "Segment results"
         )
 
-        with st.expander(label, expanded=len(dataset_results) == 1):
+        with st.expander(label, expanded=len(visible_results) == 1):
             display_dataframe(dataframe)
             st.caption(
                 f"{len(dataframe):,} row(s) × "
-                f"{len(dataframe.columns):,} column(s)"
+                f"{len(dataframe.columns):,} displayed column(s)"
             )
 
     with st.expander("File quality"):
@@ -2126,7 +2291,6 @@ def render_dataset_details(
                 )
             else:
                 st.write("✓ No files were skipped.")
-
 
 
 def render_performer_configuration(
@@ -2354,10 +2518,15 @@ def render_performer_configuration(
     with st.container(border=True):
         st.markdown(
             """
-            <h3 class="mp-card-heading">Results to include</h3>
+            <h3 class="mp-card-heading">Results to show</h3>
             <p class="mp-card-copy">
-                Select the measures required for this performer.
+                Choose which measures appear in this performer's dashboard and downloads.
             </p>
+            <div class="mp-calculation-note">
+                MidiPy always calculates the complete metric set. These options
+                control only what is displayed and included in downloads. After
+                analysis, changing this view does not require recalculation.
+            </div>
             """,
             unsafe_allow_html=True,
         )
@@ -2365,9 +2534,9 @@ def render_performer_configuration(
         result_preset = st.radio(
             "Report detail",
             options=[
-                "Complete report",
-                "Counts only",
-                "Custom selection",
+                "Show all measures",
+                "Show counts only",
+                "Choose measures",
             ],
             index=0,
             key=f"{key_prefix}_preset_{analysis_cycle}",
@@ -2380,7 +2549,7 @@ def render_performer_configuration(
             else NON_FOOT_METRICS
         )
 
-        if result_preset == "Complete report":
+        if result_preset == "Show all measures":
             selected_metrics = available_for_instrument.copy()
 
             if include_feet:
@@ -2394,7 +2563,7 @@ def render_performer_configuration(
                     "velocity, and asynchrony"
                 )
 
-        elif result_preset == "Counts only":
+        elif result_preset == "Show counts only":
             selected_metrics = (
                 COUNT_METRICS.copy()
                 if include_feet
@@ -2418,12 +2587,6 @@ def render_performer_configuration(
             selected_metrics = selected_custom_metrics(
                 include_feet=include_feet,
                 key_prefix=key_prefix,
-            )
-
-            st.caption(
-                f"{len(selected_metrics)} of "
-                f"{len(available_for_instrument)} available "
-                "measures selected"
             )
 
     return {
@@ -2512,37 +2675,51 @@ progress_placeholder = st.empty()
 
 st.markdown(
     """
-    <h2 class="mp-section-title">Analysis setup</h2>
-    <p class="mp-section-copy">
-        Choose whether to analyze one performer or compare two performer datasets.
-    </p>
+    <div class="mp-mode-intro">
+        <div>
+            <span class="mp-mode-kicker">Start here</span>
+            <h2 class="mp-section-title">Choose an analysis type</h2>
+            <p class="mp-mode-selector-copy">
+                Select the workflow that matches the files you are analyzing today.
+            </p>
+        </div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
 
 with st.container(border=True):
+    st.markdown(
+        '<div class="mp-mode-selector-marker"></div>',
+        unsafe_allow_html=True,
+    )
+
     analysis_design = st.radio(
-        "Would you like to compare a music therapist and a participant?",
+        "Analysis type",
         options=[
-            "Single-performer analysis",
-            "Therapist–participant comparison",
+            "Single performer",
+            "Music therapist + participant",
         ],
         index=0,
         horizontal=True,
         key=f"analysis_design_{analysis_cycle}",
+        label_visibility="collapsed",
     )
 
     comparison_enabled = (
-        analysis_design == "Therapist–participant comparison"
+        analysis_design == "Music therapist + participant"
     )
 
     if comparison_enabled:
         st.markdown(
             """
-            <div class="mp-analysis-mode-note">
-                The same instrument mapping, segment settings, and result measures
-                will be applied to both datasets. This keeps the comparison
-                consistent and easier to interpret.
+            <div class="mp-mode-summary">
+                <span class="mp-mode-summary-icon">2</span>
+                <span>
+                    Upload two datasets and configure the music therapist and
+                    participant independently. Only measures selected for both
+                    performers are included in the comparison.
+                </span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -2550,9 +2727,12 @@ with st.container(border=True):
     else:
         st.markdown(
             """
-            <div class="mp-analysis-mode-note">
-                Analyze one performer or one collection of sessions using the
-                standard MidiPy workflow.
+            <div class="mp-mode-summary">
+                <span class="mp-mode-summary-icon">1</span>
+                <span>
+                    Upload one performer's sessions and use one instrument,
+                    mapping, and result-view configuration.
+                </span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -2855,18 +3035,28 @@ if comparison_enabled:
     st.markdown(
         """
         <div class="mp-comparison-callout">
-            The music therapist and participant are configured independently.
-            The comparison will use only the measures and analysis levels
-            available for both performers.
+            Configure the music therapist and participant separately. Instrument,
+            note mapping, analysis scope, segment settings, and visible measures
+            may differ. The comparison uses only shared measures at a shared level.
         </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <p class="mp-config-tabs-note">
+            Complete one tab, then review the other. Settings are saved while
+            you move between performers.
+        </p>
         """,
         unsafe_allow_html=True,
     )
 
     therapist_settings_tab, participant_settings_tab = st.tabs(
         [
-            "Music therapist settings",
-            "Participant settings",
+            "Music therapist",
+            "Participant",
         ]
     )
 
@@ -3161,10 +3351,15 @@ else:
     with st.container(border=True):
         st.markdown(
             """
-            <h3 class="mp-card-heading">Results to include</h3>
+            <h3 class="mp-card-heading">Results to show</h3>
             <p class="mp-card-copy">
-                Use a prepared report or choose measures by category.
+                Choose a prepared view or select the measures you want to see.
             </p>
+            <div class="mp-calculation-note">
+                MidiPy always calculates the complete metric set. These options
+                control only what is displayed and included in downloads. After
+                analysis, changing this view does not require recalculation.
+            </div>
             """,
             unsafe_allow_html=True,
         )
@@ -3172,9 +3367,9 @@ else:
         result_preset = st.radio(
             "Report detail",
             options=[
-                "Complete report",
-                "Counts only",
-                "Custom selection",
+                "Show all measures",
+                "Show counts only",
+                "Choose measures",
             ],
             index=0,
             key=f"metric_preset_{analysis_cycle}",
@@ -3187,7 +3382,7 @@ else:
             else NON_FOOT_METRICS
         )
 
-        if result_preset == "Complete report":
+        if result_preset == "Show all measures":
             selected_metrics = available_for_instrument.copy()
 
             if include_feet:
@@ -3201,7 +3396,7 @@ else:
                     "velocity, and asynchrony"
                 )
 
-        elif result_preset == "Counts only":
+        elif result_preset == "Show counts only":
             selected_metrics = (
                 COUNT_METRICS.copy()
                 if include_feet
@@ -3225,12 +3420,6 @@ else:
             selected_metrics = selected_custom_metrics(
                 include_feet=include_feet,
                 key_prefix="single",
-            )
-
-            st.caption(
-                f"{len(selected_metrics)} of "
-                f"{len(available_for_instrument)} available "
-                "measures selected"
             )
 
     configs_by_role[ROLE_SINGLE] = {
@@ -3261,15 +3450,31 @@ else:
 # =============================================================================
 
 current_settings = {
+    "schema_version": APP_SCHEMA_VERSION,
     "analysis_design": analysis_design,
     "performer_configurations": configs_by_role,
+}
+
+calculation_configurations = {
+    role: {
+        key: value
+        for key, value in config.items()
+        if key != "selected_metrics"
+    }
+    for role, config in configs_by_role.items()
+}
+
+calculation_settings = {
+    "schema_version": APP_SCHEMA_VERSION,
+    "analysis_design": analysis_design,
+    "performer_configurations": calculation_configurations,
 }
 
 current_upload_signature = combined_upload_signature(
     uploads_by_role
 )
 current_settings_signature = settings_signature(
-    current_settings
+    calculation_settings
 )
 
 existing_results = st.session_state.get("midipy_results")
@@ -3353,8 +3558,9 @@ with st.container(border=True):
 
 if existing_results and not existing_results_are_current:
     st.warning(
-        "Files or settings changed after the last analysis. "
-        "Run the analysis again to refresh the results."
+        "Uploaded files or calculation settings changed after the last "
+        "analysis. Run the analysis again to refresh the results. Changes to "
+        "which measures are shown do not require reanalysis."
     )
 
 
@@ -3400,23 +3606,8 @@ if submitted:
                     ).strip("_")
 
                     analysis_status.write(
-                        f"Validating and analyzing {role.lower()} "
-                        "files."
-                    )
-
-                    metrics_argument = (
-                        ["all"]
-                        if (
-                            config["include_feet"]
-                            and set(
-                                config["selected_metrics"]
-                            )
-                            == set(AVAILABLE_METRICS)
-                        )
-                        else [
-                            "Name",
-                            *config["selected_metrics"],
-                        ]
+                        f"Validating {role.lower()} files and calculating "
+                        "the complete MidiPy metric set."
                     )
 
                     (
@@ -3427,7 +3618,6 @@ if submitted:
                         uploaded_files=uploaded_files,
                         temporary_path=temporary_path,
                         dataset_slug=role_slug,
-                        metrics_argument=metrics_argument,
                         run_whole=config["run_whole"],
                         run_segments=config["run_segments"],
                         number_of_segments=(
@@ -3483,6 +3673,7 @@ if submitted:
                     skipped_files_by_role[role] = skipped_files
 
                 analysis_payload = {
+                    "schema_version": APP_SCHEMA_VERSION,
                     "mode": (
                         "comparison"
                         if comparison_enabled
@@ -3557,6 +3748,13 @@ if submitted:
 # =============================================================================
 
 analysis_payload = st.session_state.get("midipy_results")
+
+if (
+    analysis_payload
+    and analysis_payload.get("schema_version") != APP_SCHEMA_VERSION
+):
+    clear_analysis_state()
+    analysis_payload = None
 stored_upload_signature = st.session_state.get(
     "midipy_analysis_signature"
 )
@@ -3577,10 +3775,10 @@ with progress_placeholder:
 
 if analysis_payload and results_are_current:
     datasets = analysis_payload["datasets"]
-    analyzed_configs = analysis_payload["configurations"]
-    analyzed_shared_metrics = analysis_payload[
-        "shared_metrics"
-    ]
+    # Raw results contain the complete MidiPy metric set. Display choices
+    # therefore update immediately without rerunning the calculation.
+    analyzed_configs = configs_by_role
+    analyzed_shared_metrics = shared_metrics
 
     valid_names_by_role = st.session_state.get(
         "midipy_valid_names",
@@ -3602,6 +3800,7 @@ if analysis_payload and results_are_current:
 
     export_tables = comparison_export_tables(
         datasets,
+        analyzed_configs,
         comparison_summary,
     )
     excel_bytes = dataframe_to_excel_bytes(export_tables)
@@ -3822,9 +4021,9 @@ if analysis_payload and results_are_current:
                     ROLE_THERAPIST,
                     [],
                 ),
-                include_feet=analyzed_configs[
+                selected_metrics=analyzed_configs[
                     ROLE_THERAPIST
-                ]["include_feet"],
+                ]["selected_metrics"],
             )
 
         with participant_tab:
@@ -3839,9 +4038,9 @@ if analysis_payload and results_are_current:
                     ROLE_PARTICIPANT,
                     [],
                 ),
-                include_feet=analyzed_configs[
+                selected_metrics=analyzed_configs[
                     ROLE_PARTICIPANT
-                ]["include_feet"],
+                ]["selected_metrics"],
             )
 
     else:
@@ -3861,10 +4060,15 @@ if analysis_payload and results_are_current:
                 single_results,
                 valid_names_by_role.get(ROLE_SINGLE, []),
                 skipped_files_by_role.get(ROLE_SINGLE, []),
-                single_config["include_feet"],
+                single_config["selected_metrics"],
             )
 
-            result_options = list(single_results.keys())
+            visible_single_results = filter_results_for_display(
+                single_results,
+                single_config["selected_metrics"],
+            )
+
+            result_options = list(visible_single_results.keys())
 
             selected_result_name = st.radio(
                 "Result set",
@@ -3879,14 +4083,19 @@ if analysis_payload and results_are_current:
             )
 
             render_result_chart(
-                single_results[selected_result_name],
+                visible_single_results[selected_result_name],
                 selected_result_name,
                 key_prefix="single",
             )
 
         with data_tab:
+            visible_single_results = filter_results_for_display(
+                single_results,
+                single_config["selected_metrics"],
+            )
+
             for result_name, dataframe in (
-                single_results.items()
+                visible_single_results.items()
             ):
                 label = (
                     "Whole-file results"
@@ -3896,13 +4105,13 @@ if analysis_payload and results_are_current:
 
                 with st.expander(
                     label,
-                    expanded=len(single_results) == 1,
+                    expanded=len(visible_single_results) == 1,
                 ):
                     display_dataframe(dataframe)
 
                     st.caption(
                         f"{len(dataframe):,} row(s) × "
-                        f"{len(dataframe.columns):,} column(s)"
+                        f"{len(dataframe.columns):,} displayed column(s)"
                     )
 
         with quality_tab:
@@ -3947,8 +4156,8 @@ else:
 st.markdown(
     """
     <div class="mp-footer">
-        MidiPy Analysis Studio · Independent performer
-        configuration with neutral comparison
+        MidiPy Analysis Studio · Full MidiPy calculation with focused,
+        human-centred result views
     </div>
     """,
     unsafe_allow_html=True,
