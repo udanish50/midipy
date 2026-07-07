@@ -825,6 +825,235 @@ st.markdown(
         font-size: 0.87rem;
     }
 
+    /* Professional measure selection */
+    .mp-measure-selector-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .mp-measure-selector-heading > div:first-child {
+        display: grid;
+        gap: 0.15rem;
+    }
+
+    .mp-measure-selector-heading strong {
+        color: #172033;
+        font-size: 1rem;
+    }
+
+    .mp-measure-selector-heading span {
+        color: #5d6a7f;
+        font-size: 0.84rem;
+    }
+
+    .mp-calculation-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 0.32rem 0.68rem;
+        border: 1px solid #bfd4ca;
+        border-radius: 999px;
+        background: #eff8f3;
+        color: #236044;
+        font-size: 0.76rem;
+        font-weight: 760;
+        white-space: nowrap;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-metric-group-marker) {
+        height: 100%;
+        min-height: 285px;
+        padding: 0.9rem 0.95rem;
+        border-color: #dde4ef !important;
+        background:
+            linear-gradient(180deg, #ffffff 0%, #fbfcff 100%) !important;
+        box-shadow: 0 7px 20px rgba(31, 47, 86, 0.055);
+    }
+
+    .mp-metric-group-heading {
+        display: grid;
+        gap: 0.2rem;
+        min-height: 62px;
+        margin-bottom: 0.65rem;
+        padding-bottom: 0.65rem;
+        border-bottom: 1px solid #e7ebf2;
+    }
+
+    .mp-metric-group-heading strong {
+        color: #20304c;
+        font-size: 0.95rem;
+    }
+
+    .mp-metric-group-heading span {
+        color: #687589;
+        font-size: 0.78rem;
+        line-height: 1.35;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-metric-group-marker)
+    [data-testid="stCheckbox"] {
+        margin-bottom: 0.18rem;
+        padding: 0.22rem 0.3rem;
+        border-radius: 9px;
+        transition: background 130ms ease;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-metric-group-marker)
+    [data-testid="stCheckbox"]:hover {
+        background: #f3f6fc;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-metric-group-marker)
+    [data-testid="stCheckbox"] label {
+        min-height: 36px;
+        color: #26364f;
+        font-weight: 620;
+    }
+
+    /* Results workspace navigation */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker) {
+        margin: 0.3rem 0 1.1rem;
+        padding: 0.9rem 1rem 0.95rem;
+        border-color: #d8e1f1 !important;
+        background:
+            radial-gradient(
+                circle at 95% 0%,
+                rgba(49, 87, 213, 0.08),
+                transparent 13rem
+            ),
+            #ffffff !important;
+        box-shadow: 0 10px 26px rgba(31, 47, 86, 0.07);
+    }
+
+    .mp-results-nav-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.7rem;
+    }
+
+    .mp-results-nav-heading strong {
+        display: block;
+        color: #172033;
+        font-size: 0.98rem;
+    }
+
+    .mp-results-nav-heading span {
+        display: block;
+        margin-top: 0.12rem;
+        color: #657287;
+        font-size: 0.82rem;
+    }
+
+    .mp-results-section-intro {
+        margin: 0.15rem 0 0.9rem;
+        padding: 0.78rem 0.9rem;
+        border: 1px solid #e0e6f0;
+        border-left: 4px solid #3157d5;
+        border-radius: 11px;
+        background: #fafbfe;
+    }
+
+    .mp-results-section-intro strong {
+        display: block;
+        margin-bottom: 0.15rem;
+        color: #20304c;
+        font-size: 0.98rem;
+    }
+
+    .mp-results-section-intro span {
+        color: #627086;
+        font-size: 0.84rem;
+    }
+
+    /* Streamlit 1.58 segmented-control structure */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [data-testid="stSegmentedControl"] {
+        width: 100%;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [data-testid="stSegmentedControl"] > div,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [role="radiogroup"] {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.65rem !important;
+        width: 100% !important;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [data-testid="stSegmentedControl"] button,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [role="radiogroup"] > label {
+        min-height: 54px !important;
+        margin: 0 !important;
+        padding: 0.72rem 0.85rem !important;
+        justify-content: center !important;
+        border: 1px solid #d9e1ed !important;
+        border-radius: 12px !important;
+        background: #ffffff !important;
+        color: #526077 !important;
+        font-weight: 730 !important;
+        box-shadow: 0 3px 10px rgba(31, 47, 86, 0.04);
+        transition:
+            border-color 130ms ease,
+            background 130ms ease,
+            color 130ms ease,
+            transform 130ms ease,
+            box-shadow 130ms ease;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [data-testid="stSegmentedControl"] button:hover,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [role="radiogroup"] > label:hover {
+        border-color: #9eb0e3 !important;
+        background: #f7f9ff !important;
+        color: #2948b8 !important;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 15px rgba(31, 47, 86, 0.075);
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [data-testid="stSegmentedControl"] button[aria-pressed="true"],
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+    [role="radiogroup"] > label:has(input:checked) {
+        border-color: #3157d5 !important;
+        background:
+            linear-gradient(135deg, #3157d5, #2746b2) !important;
+        color: #ffffff !important;
+        box-shadow: 0 8px 18px rgba(49, 87, 213, 0.20);
+        transform: translateY(-1px);
+    }
+
+    @media (max-width: 760px) {
+        .mp-measure-selector-heading,
+        .mp-results-nav-heading {
+            display: grid;
+        }
+
+        .mp-calculation-badge {
+            width: fit-content;
+            white-space: normal;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-metric-group-marker) {
+            min-height: auto;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+        [data-testid="stSegmentedControl"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.mp-results-nav-marker)
+        [role="radiogroup"] {
+            grid-template-columns: 1fr !important;
+        }
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -1594,27 +1823,131 @@ def selected_custom_metrics(
         else NON_FOOT_METRICS
     )
 
-    selected = st.multiselect(
-        "Measures to show",
-        options=available_metrics,
-        default=available_metrics,
-        format_func=lambda metric: METRIC_LABELS.get(metric, metric),
-        placeholder="Choose one or more measures",
-        help=(
-            "MidiPy calculates the complete metric set. This selection "
-            "controls only what appears in the dashboard and downloads."
-        ),
-        key=(
-            f"{key_prefix}_{'with_feet' if include_feet else 'no_feet'}_"
-            f"visible_metrics_{analysis_cycle}"
-        ),
+    checkbox_keys = {
+        metric: (
+            f"{key_prefix}_visible_{metric}_{analysis_cycle}"
+        )
+        for metric in available_metrics
+    }
+
+    # Initialize every visible measure as selected the first time this
+    # configuration is opened.
+    for metric, widget_key in checkbox_keys.items():
+        if widget_key not in st.session_state:
+            st.session_state[widget_key] = True
+
+    st.markdown(
+        """
+        <div class="mp-measure-selector-heading">
+            <div>
+                <strong>Measures to show</strong>
+                <span>
+                    Choose what appears in the dashboard and downloaded files.
+                </span>
+            </div>
+            <div class="mp-calculation-badge">
+                Full MidiPy calculation remains enabled
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
+    control_space, select_all_column, clear_all_column = st.columns(
+        [4.2, 1, 1]
+    )
+
+    with control_space:
+        st.caption(
+            "All measures are calculated internally. These checkboxes "
+            "control presentation only."
+        )
+
+    with select_all_column:
+        if st.button(
+            "Select all",
+            use_container_width=True,
+            key=f"{key_prefix}_select_all_metrics_{analysis_cycle}",
+        ):
+            for widget_key in checkbox_keys.values():
+                st.session_state[widget_key] = True
+            st.rerun()
+
+    with clear_all_column:
+        if st.button(
+            "Clear all",
+            use_container_width=True,
+            key=f"{key_prefix}_clear_all_metrics_{analysis_cycle}",
+        ):
+            for widget_key in checkbox_keys.values():
+                st.session_state[widget_key] = False
+            st.rerun()
+
+    selected: list[str] = []
+    group_descriptions = {
+        "Note counts": "How many notes were detected for each mapped area.",
+        "Velocity": "Performance-intensity measures derived from MIDI velocity.",
+        "Asynchrony": "Timing differences relative to the quantized beat.",
+    }
+
+    group_columns = st.columns(3, gap="medium")
+
+    for column, (group_name, metrics) in zip(
+        group_columns,
+        METRIC_GROUPS.items(),
+    ):
+        visible_group_metrics = [
+            metric
+            for metric in metrics
+            if metric in available_metrics
+        ]
+
+        with column:
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="mp-metric-group-marker"></div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"""
+                    <div class="mp-metric-group-heading">
+                        <strong>{group_name}</strong>
+                        <span>{group_descriptions[group_name]}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                for metric in visible_group_metrics:
+                    checked = st.checkbox(
+                        METRIC_LABELS.get(metric, metric),
+                        key=checkbox_keys[metric],
+                        help=METRIC_HELP.get(metric),
+                    )
+
+                    if checked:
+                        selected.append(metric)
+
+                selected_in_group = sum(
+                    bool(st.session_state[checkbox_keys[metric]])
+                    for metric in visible_group_metrics
+                )
+
+                st.caption(
+                    f"{selected_in_group} of "
+                    f"{len(visible_group_metrics)} selected"
+                )
 
     st.markdown(
         f"""
         <div class="mp-selection-summary">
-            <span><strong>{len(selected)}</strong> of {len(available_metrics)} shown</span>
-            <span>All MidiPy measures are still calculated internally.</span>
+            <span>
+                <strong>{len(selected)}</strong> of
+                {len(available_metrics)} measures shown
+            </span>
+            <span>
+                MidiPy still calculates the complete measure set.
+            </span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -4047,24 +4380,93 @@ if analysis_payload and results_are_current:
         single_results = datasets[ROLE_SINGLE]
         single_config = analyzed_configs[ROLE_SINGLE]
 
-        overview_tab, data_tab, quality_tab = st.tabs(
-            [
-                "Overview",
-                "Detailed data",
-                "File quality",
-            ]
+        result_sections = [
+            "Overview",
+            "Detailed data",
+            "File quality",
+        ]
+        result_section_labels = {
+            "Overview": ":material/space_dashboard: Overview",
+            "Detailed data": ":material/table_view: Detailed data",
+            "File quality": ":material/verified: File quality",
+        }
+        result_section_descriptions = {
+            "Overview": (
+                "Review the most important summary values and "
+                "visual patterns."
+            ),
+            "Detailed data": (
+                "Inspect the displayed MidiPy measures in complete "
+                "result tables."
+            ),
+            "File quality": (
+                "Confirm which files were analyzed and review any "
+                "validation issues."
+            ),
+        }
+
+        with st.container(border=True):
+            st.markdown(
+                '<div class="mp-results-nav-marker"></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                """
+                <div class="mp-results-nav-heading">
+                    <div>
+                        <strong>Results workspace</strong>
+                        <span>
+                            Move between the summary, data tables,
+                            and processing record.
+                        </span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            selected_result_section = st.segmented_control(
+                "Choose a results section",
+                options=result_sections,
+                default="Overview",
+                required=True,
+                format_func=lambda section: (
+                    result_section_labels[section]
+                ),
+                key=f"single_result_section_{analysis_cycle}",
+                label_visibility="collapsed",
+                width="stretch",
+            )
+
+            st.caption(
+                result_section_descriptions[
+                    selected_result_section
+                ]
+            )
+
+        visible_single_results = filter_results_for_display(
+            single_results,
+            single_config["selected_metrics"],
         )
 
-        with overview_tab:
+        if selected_result_section == "Overview":
+            st.markdown(
+                """
+                <div class="mp-results-section-intro">
+                    <strong>Overview</strong>
+                    <span>
+                        A concise view of the selected measures and
+                        performance patterns.
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
             render_dataset_summary(
                 single_results,
                 valid_names_by_role.get(ROLE_SINGLE, []),
                 skipped_files_by_role.get(ROLE_SINGLE, []),
-                single_config["selected_metrics"],
-            )
-
-            visible_single_results = filter_results_for_display(
-                single_results,
                 single_config["selected_metrics"],
             )
 
@@ -4088,10 +4490,19 @@ if analysis_payload and results_are_current:
                 key_prefix="single",
             )
 
-        with data_tab:
-            visible_single_results = filter_results_for_display(
-                single_results,
-                single_config["selected_metrics"],
+        elif selected_result_section == "Detailed data":
+            st.markdown(
+                """
+                <div class="mp-results-section-intro">
+                    <strong>Detailed data</strong>
+                    <span>
+                        Tables include only the measures selected for
+                        display. MidiPy's complete calculations remain
+                        unchanged internally.
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
             for result_name, dataframe in (
@@ -4114,37 +4525,82 @@ if analysis_payload and results_are_current:
                         f"{len(dataframe.columns):,} displayed column(s)"
                     )
 
-        with quality_tab:
-            quality_left, quality_right = st.columns(2)
+        else:
+            st.markdown(
+                """
+                <div class="mp-results-section-intro">
+                    <strong>File quality</strong>
+                    <span>
+                        Review the files included in the analysis and
+                        any files excluded during complete validation.
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-            with quality_left:
-                st.markdown("**Successfully analyzed**")
+            analyzed_files = valid_names_by_role.get(
+                ROLE_SINGLE,
+                [],
+            )
+            single_skipped = skipped_files_by_role.get(
+                ROLE_SINGLE,
+                [],
+            )
 
-                for filename in valid_names_by_role.get(
-                    ROLE_SINGLE,
-                    [],
-                ):
-                    st.write(f"✓ {filename}")
+            quality_summary_left, quality_summary_right = st.columns(2)
 
-            with quality_right:
-                st.markdown("**Skipped during validation**")
-
-                single_skipped = skipped_files_by_role.get(
-                    ROLE_SINGLE,
-                    [],
+            with quality_summary_left:
+                st.metric(
+                    "Successfully analyzed",
+                    len(analyzed_files),
                 )
 
-                if single_skipped:
-                    st.dataframe(
-                        pd.DataFrame(
-                            single_skipped,
-                            columns=["File", "Reason"],
-                        ),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-                else:
-                    st.write("✓ No files were skipped.")
+            with quality_summary_right:
+                st.metric(
+                    "Skipped during validation",
+                    len(single_skipped),
+                )
+
+            quality_left, quality_right = st.columns(
+                2,
+                gap="large",
+            )
+
+            with quality_left:
+                with st.container(border=True):
+                    st.markdown("### Successfully analyzed")
+
+                    if analyzed_files:
+                        for filename in analyzed_files:
+                            st.write(f"✓ {filename}")
+                    else:
+                        st.caption(
+                            "No successfully analyzed files were recorded."
+                        )
+
+            with quality_right:
+                with st.container(border=True):
+                    st.markdown("### Skipped during validation")
+
+                    if single_skipped:
+                        st.dataframe(
+                            pd.DataFrame(
+                                single_skipped,
+                                columns=["File", "Reason"],
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                    else:
+                        st.success(
+                            "No files were skipped during validation."
+                        )
+
+            st.info(
+                "Uploaded files are processed in a temporary workspace. "
+                "The temporary files are removed after processing."
+            )
 
 else:
     st.info(
